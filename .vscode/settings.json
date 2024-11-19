@@ -1,0 +1,33 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/elon/ws_FAST-LIVO/devel/lib/python3/dist-packages",
+        "/home/elon/ws_livox2/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/elon/ws_FAST-LIVO/devel/lib/python3/dist-packages",
+        "/home/elon/ws_livox2/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "files.associations": {
+        "complex": "cpp",
+        "*.tcc": "cpp",
+        "*.ipp": "cpp",
+        "array": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "unordered_set": "cpp",
+        "vector": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp",
+        "bitset": "cpp",
+        "utility": "cpp"
+    },
+    "C_Cpp.intelliSenseEngineFallback": "Disabled", //需要添加的
+    "C_Cpp.intelliSenseEngine": "Tag Parser",  //  需要添加的
+
+}

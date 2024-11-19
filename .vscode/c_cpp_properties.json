@@ -1,0 +1,26 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+          "/home/elon/ws_FAST-LIVO/devel/include/**",
+          "/home/elon/ws_livox2/devel/include/**",
+          "/opt/ros/noetic/include/**",
+          "/home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/**",
+          "/home/elon/ws_FAST-LIVO/src/rpg_vikit/vikit_common/include/**",
+          "/home/elon/ws_FAST-LIVO/src/rpg_vikit/vikit_ros/include/**",
+          "/usr/include/**"
+      ],
+
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++11"
+    }
+  ],
+  "version": 4
+}

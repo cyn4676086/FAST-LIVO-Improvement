@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -std=c++17 -O3 -std=c++17 -pthread -std=c++0x -std=c++17 -fexceptions -fopenmp  -g   -shared -Wl,-soname,libvio.so -o /home/elon/ws_FAST-LIVO/devel/lib/libvio.so CMakeFiles/vio.dir/src/lidar_selection.cpp.o CMakeFiles/vio.dir/src/frame.cpp.o CMakeFiles/vio.dir/src/point.cpp.o CMakeFiles/vio.dir/src/map.cpp.o 

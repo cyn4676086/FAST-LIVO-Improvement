@@ -1,0 +1,2 @@
+FAST-LIVO:rpg_vikit/vikit_common:rpg_vikit/vikit_py:rpg_vikit/vikit_ros
+-DCATKIN_DEVEL_PREFIX=/home/elon/ws_FAST-LIVO/devel -DCMAKE_INSTALL_PREFIX=/home/elon/ws_FAST-LIVO/install -G Unix Makefiles
