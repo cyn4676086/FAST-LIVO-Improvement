@@ -76,6 +76,7 @@ world2cam(const Vector3d& xyz) const
   return world2cam(project2d(xyz));
 }
 
+/** 
 Vector2d PinholeCamera::
 world2cam(const Vector2d& uv) const
 {
@@ -104,6 +105,40 @@ world2cam(const Vector2d& uv) const
   }
   return px;
 }
+*/
+
+Vector2d PinholeCamera::world2cam(const Vector2d& uv) const {
+  Vector2d px;
+  if (!distortion_) {
+    px[0] = fx_ * uv[0] + cx_;
+    px[1] = fy_ * uv[1] + cy_;
+  } else {
+    double k1 = d_[0], k2 = d_[1];      // 径向畸变系数
+    double p1 = d_[2], p2 = d_[3];      // 切向畸变系数
+
+    // 归一化坐标
+    double x = uv[0];
+    double y = uv[1];
+    double r2 = x * x + y * y;
+
+    // 限制最大畸变半径，防止数值爆炸
+    if (r2 > 1.0) r2 = 1.0;
+
+    // 径向畸变校正 防止在高阶项产生非常大的畸变值，超出图像的有效范围  原始代码计算到了r^6三阶 不适合这种小畸变的摄像头
+    double radial_distortion = 1 + k1 * r2 + k2 * r2 * r2;
+
+    // 切向畸变校正
+    double x_distorted = x * radial_distortion + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+    double y_distorted = y * radial_distortion + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+
+    // 转换到像素坐标
+    px[0] = x_distorted * fx_ + cx_;
+    px[1] = y_distorted * fy_ + cy_;
+  }
+  return px;
+}
+
+
 
 void PinholeCamera::
 undistortImage(const cv::Mat& raw, cv::Mat& rectified)
