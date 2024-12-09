@@ -99,7 +99,7 @@ catkin_package(
 
 add_library(ikdtree include/ikd-Tree/ikd_Tree.cpp
                     # include/ikd-Forest/ikd_Forest.cpp 
-                    include/FOV_Checker/FOV_Checker.cpp
+                    #include/FOV_Checker/FOV_Checker.cpp
                     )
 add_library(vio src/lidar_selection.cpp
                 src/frame.cpp

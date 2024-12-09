@@ -581,7 +581,7 @@ gtest/googletest/CMakeFiles/gtest.dir/clean:
 rpg_vikit/vikit_common/CMakeFiles/test_vk_common_camera.dir/all: rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/all
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/test_vk_common_camera.dir/build.make rpg_vikit/vikit_common/CMakeFiles/test_vk_common_camera.dir/depend
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/test_vk_common_camera.dir/build.make rpg_vikit/vikit_common/CMakeFiles/test_vk_common_camera.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=28,29 "Built target test_vk_common_camera"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=27,28 "Built target test_vk_common_camera"
 .PHONY : rpg_vikit/vikit_common/CMakeFiles/test_vk_common_camera.dir/all
 
 # Build rule for subdir invocation for target.
@@ -662,7 +662,7 @@ rpg_vikit/vikit_common/CMakeFiles/std_msgs_generate_messages_nodejs.dir/clean:
 rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/all:
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/build.make rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/depend
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/build.make rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=34,35,36,37,38,39,40,41,42,43,44 "Built target vikit_common"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=33,34,35,36,37,38,39,40,41,42,43 "Built target vikit_common"
 .PHONY : rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/all
 
 # Build rule for subdir invocation for target.
@@ -824,7 +824,7 @@ rpg_vikit/vikit_common/CMakeFiles/roscpp_generate_messages_py.dir/clean:
 rpg_vikit/vikit_common/CMakeFiles/test_vk_common_patch_score.dir/all: rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/all
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/test_vk_common_patch_score.dir/build.make rpg_vikit/vikit_common/CMakeFiles/test_vk_common_patch_score.dir/depend
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/test_vk_common_patch_score.dir/build.make rpg_vikit/vikit_common/CMakeFiles/test_vk_common_patch_score.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=30,31 "Built target test_vk_common_patch_score"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=29,30 "Built target test_vk_common_patch_score"
 .PHONY : rpg_vikit/vikit_common/CMakeFiles/test_vk_common_patch_score.dir/all
 
 # Build rule for subdir invocation for target.
@@ -1013,7 +1013,7 @@ rpg_vikit/vikit_common/CMakeFiles/rosgraph_msgs_generate_messages_lisp.dir/clean
 rpg_vikit/vikit_common/CMakeFiles/test_vk_common_triangulation.dir/all: rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/all
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/test_vk_common_triangulation.dir/build.make rpg_vikit/vikit_common/CMakeFiles/test_vk_common_triangulation.dir/depend
 	$(MAKE) -f rpg_vikit/vikit_common/CMakeFiles/test_vk_common_triangulation.dir/build.make rpg_vikit/vikit_common/CMakeFiles/test_vk_common_triangulation.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=32,33 "Built target test_vk_common_triangulation"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=31,32 "Built target test_vk_common_triangulation"
 .PHONY : rpg_vikit/vikit_common/CMakeFiles/test_vk_common_triangulation.dir/all
 
 # Build rule for subdir invocation for target.
@@ -1121,7 +1121,7 @@ rpg_vikit/vikit_py/CMakeFiles/_catkin_empty_exported_target.dir/clean:
 rpg_vikit/vikit_ros/CMakeFiles/vikit_ros.dir/all: rpg_vikit/vikit_common/CMakeFiles/vikit_common.dir/all
 	$(MAKE) -f rpg_vikit/vikit_ros/CMakeFiles/vikit_ros.dir/build.make rpg_vikit/vikit_ros/CMakeFiles/vikit_ros.dir/depend
 	$(MAKE) -f rpg_vikit/vikit_ros/CMakeFiles/vikit_ros.dir/build.make rpg_vikit/vikit_ros/CMakeFiles/vikit_ros.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=45,46 "Built target vikit_ros"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=44,45 "Built target vikit_ros"
 .PHONY : rpg_vikit/vikit_ros/CMakeFiles/vikit_ros.dir/all
 
 # Build rule for subdir invocation for target.
@@ -3237,7 +3237,7 @@ FAST-LIVO/CMakeFiles/topic_tools_generate_messages_py.dir/clean:
 FAST-LIVO/CMakeFiles/vio.dir/all:
 	$(MAKE) -f FAST-LIVO/CMakeFiles/vio.dir/build.make FAST-LIVO/CMakeFiles/vio.dir/depend
 	$(MAKE) -f FAST-LIVO/CMakeFiles/vio.dir/build.make FAST-LIVO/CMakeFiles/vio.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=47,48,49,50,51 "Built target vio"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=46,47,48,49,50 "Built target vio"
 .PHONY : FAST-LIVO/CMakeFiles/vio.dir/all
 
 # Build rule for subdir invocation for target.
@@ -3372,12 +3372,12 @@ FAST-LIVO/CMakeFiles/livox_ros_driver_generate_messages_eus.dir/clean:
 FAST-LIVO/CMakeFiles/ikdtree.dir/all:
 	$(MAKE) -f FAST-LIVO/CMakeFiles/ikdtree.dir/build.make FAST-LIVO/CMakeFiles/ikdtree.dir/depend
 	$(MAKE) -f FAST-LIVO/CMakeFiles/ikdtree.dir/build.make FAST-LIVO/CMakeFiles/ikdtree.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=25,26,27 "Built target ikdtree"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/elon/ws_FAST-LIVO/build/CMakeFiles --progress-num=25,26 "Built target ikdtree"
 .PHONY : FAST-LIVO/CMakeFiles/ikdtree.dir/all
 
 # Build rule for subdir invocation for target.
 FAST-LIVO/CMakeFiles/ikdtree.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/elon/ws_FAST-LIVO/build/CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/elon/ws_FAST-LIVO/build/CMakeFiles 2
 	$(MAKE) -f CMakeFiles/Makefile2 FAST-LIVO/CMakeFiles/ikdtree.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/elon/ws_FAST-LIVO/build/CMakeFiles 0
 .PHONY : FAST-LIVO/CMakeFiles/ikdtree.dir/rule
@@ -3596,7 +3596,7 @@ FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/all: FAST-LIVO/CMakeFiles/ikdtree.dir/
 
 # Build rule for subdir invocation for target.
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/elon/ws_FAST-LIVO/build/CMakeFiles 25
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/elon/ws_FAST-LIVO/build/CMakeFiles 24
 	$(MAKE) -f CMakeFiles/Makefile2 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/elon/ws_FAST-LIVO/build/CMakeFiles 0
 .PHONY : FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/rule

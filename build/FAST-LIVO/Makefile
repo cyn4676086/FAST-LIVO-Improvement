@@ -1052,33 +1052,6 @@ fast_livo_generate_messages_py/fast:
 	cd /home/elon/ws_FAST-LIVO/build && $(MAKE) -f FAST-LIVO/CMakeFiles/fast_livo_generate_messages_py.dir/build.make FAST-LIVO/CMakeFiles/fast_livo_generate_messages_py.dir/build
 .PHONY : fast_livo_generate_messages_py/fast
 
-include/FOV_Checker/FOV_Checker.o: include/FOV_Checker/FOV_Checker.cpp.o
-
-.PHONY : include/FOV_Checker/FOV_Checker.o
-
-# target to build an object file
-include/FOV_Checker/FOV_Checker.cpp.o:
-	cd /home/elon/ws_FAST-LIVO/build && $(MAKE) -f FAST-LIVO/CMakeFiles/ikdtree.dir/build.make FAST-LIVO/CMakeFiles/ikdtree.dir/include/FOV_Checker/FOV_Checker.cpp.o
-.PHONY : include/FOV_Checker/FOV_Checker.cpp.o
-
-include/FOV_Checker/FOV_Checker.i: include/FOV_Checker/FOV_Checker.cpp.i
-
-.PHONY : include/FOV_Checker/FOV_Checker.i
-
-# target to preprocess a source file
-include/FOV_Checker/FOV_Checker.cpp.i:
-	cd /home/elon/ws_FAST-LIVO/build && $(MAKE) -f FAST-LIVO/CMakeFiles/ikdtree.dir/build.make FAST-LIVO/CMakeFiles/ikdtree.dir/include/FOV_Checker/FOV_Checker.cpp.i
-.PHONY : include/FOV_Checker/FOV_Checker.cpp.i
-
-include/FOV_Checker/FOV_Checker.s: include/FOV_Checker/FOV_Checker.cpp.s
-
-.PHONY : include/FOV_Checker/FOV_Checker.s
-
-# target to generate assembly for a file
-include/FOV_Checker/FOV_Checker.cpp.s:
-	cd /home/elon/ws_FAST-LIVO/build && $(MAKE) -f FAST-LIVO/CMakeFiles/ikdtree.dir/build.make FAST-LIVO/CMakeFiles/ikdtree.dir/include/FOV_Checker/FOV_Checker.cpp.s
-.PHONY : include/FOV_Checker/FOV_Checker.cpp.s
-
 include/ikd-Tree/ikd_Tree.o: include/ikd-Tree/ikd_Tree.cpp.o
 
 .PHONY : include/ikd-Tree/ikd_Tree.o
@@ -1367,9 +1340,6 @@ help:
 	@echo "... topic_tools_generate_messages_cpp"
 	@echo "... fast_livo_generate_messages_nodejs"
 	@echo "... fast_livo_generate_messages_py"
-	@echo "... include/FOV_Checker/FOV_Checker.o"
-	@echo "... include/FOV_Checker/FOV_Checker.i"
-	@echo "... include/FOV_Checker/FOV_Checker.s"
 	@echo "... include/ikd-Tree/ikd_Tree.o"
 	@echo "... include/ikd-Tree/ikd_Tree.i"
 	@echo "... include/ikd-Tree/ikd_Tree.s"

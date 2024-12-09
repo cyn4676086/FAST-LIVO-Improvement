@@ -332,10 +332,6 @@ Eigen/Core
 IKFoM_toolkit/esekfom/esekfom.hpp
 -
 
-/home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/IMU_Processing.cpp
-IMU_Processing.h
-/home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/IMU_Processing.h
-
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/laserMapping.cpp
 omp.h
 -
@@ -407,10 +403,6 @@ ikd-Tree/ikd_Tree.h
 -
 pcl/kdtree/kdtree_flann.h
 -
-
-/home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/preprocess.cpp
-preprocess.h
-/home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/preprocess.h
 
 /home/elon/ws_FAST-LIVO/src/rpg_vikit/vikit_common/include/vikit/abstract_camera.h
 Eigen/Core
