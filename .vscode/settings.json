@@ -84,7 +84,8 @@
         "thread": "cpp",
         "cfenv": "cpp",
         "cinttypes": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "core": "cpp"
     },
     "C_Cpp.intelliSenseEngineFallback": "Disabled", //需要添加的
     "C_Cpp.intelliSenseEngine": "Tag Parser",  //  需要添加的

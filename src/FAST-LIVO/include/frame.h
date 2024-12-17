@@ -21,6 +21,10 @@
 #include <vikit/math_utils.h>
 #include <vikit/abstract_camera.h>
 #include <boost/noncopyable.hpp>
+#include <vector>
+#include <memory>
+#include <list>
+#include <opencv2/opencv.hpp>
 
 namespace lidar_selection {
 
@@ -30,163 +34,168 @@ typedef std::shared_ptr<Feature>  FeaturePtr;
 class Point;
 typedef std::shared_ptr<Point> PointPtr;
 
-typedef list<FeaturePtr> Features;
-typedef vector<cv::Mat> ImgPyr;
+typedef std::list<FeaturePtr> Features;
+typedef std::vector<cv::Mat> ImgPyr;
 
-/// A frame saves the image, the associated features and the estimated pose.
+/// A frame saves the images, the associated features, and the estimated pose.
 class Frame : boost::noncopyable
 {
 public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+      
+    static int                    frame_counter_;         //!< Counts the number of created frames. Used to set the unique id.
+    int                           id_;                    //!< Unique id of the frame.
+    // double                        timestamp_;             //!< Timestamp of when the image was recorded.
+    std::vector<vk::AbstractCamera*> cams_;              //!< Vector of camera models for multi-camera support.
+    SE3                           T_f_w_;                 //!< Transform (f)rame from (w)orld.
+    Matrix<double, 6, 6>          Cov_;                   //!< Covariance.
+    ImgPyr                        img_pyr_;               //!< Image Pyramid for each camera.
+    Features                      fts_;                   //!< List of features in the images.
+    std::vector<FeaturePtr>        key_pts_;               //!< Features used to detect overlapping FOV for each camera (5 per camera).
+    bool                          is_keyframe_;           //!< Was this frame selected as keyframe
+
+    /// Constructor accepting multiple cameras and their corresponding images
+    Frame(const std::vector<vk::AbstractCamera*>& cams, const std::vector<cv::Mat>& imgs);
     
-  static int                    frame_counter_;         //!< Counts the number of created frames. Used to set the unique id.
-  int                           id_;                    //!< Unique id of the frame.
-  // double                        timestamp_;             //!< Timestamp of when the image was recorded.
-  vk::AbstractCamera*           cam_;                   //!< Camera model.
-  SE3                           T_f_w_;                 //!< Transform (f)rame from (w)orld.
-  Matrix<double, 6, 6>          Cov_;                   //!< Covariance.
-  ImgPyr                        img_pyr_;               //!< Image Pyramid.
-  Features                      fts_;                   //!< List of features in the image.
-  vector<FeaturePtr>              key_pts_;               //!< Five features and associated 3D points which are used to detect if two frames have overlapping field of view.
-  bool                          is_keyframe_;           //!< Was this frames selected as keyframe
+    ~Frame();
 
-  Frame(vk::AbstractCamera* cam, const cv::Mat& img);
-  ~Frame();
+    /// Initialize new frame and create image pyramids for each camera.
+    void initFrame(const std::vector<cv::Mat>& imgs);
 
-  /// Initialize new frame and create image pyramid.
-  void initFrame(const cv::Mat& img);
+    /// Select this frame as keyframe.
+    void setKeyframe();
 
-  /// Select this frame as keyframe.
-  void setKeyframe();
+    /// Add a feature to the images (handled internally for each camera)
+    void addFeature(FeaturePtr ftr);
 
-  /// Add a feature to the image
-  void addFeature(FeaturePtr ftr);
+    /// Get key points for a specific camera
+    std::vector<FeaturePtr> getKeyPointsForCam(int cam_id) const;
 
-  /// The KeyPoints are those five features which are closest to the 4 image corners
-  /// and to the center and which have a 3D point assigned. These points are used
-  /// to quickly check whether two frames have overlapping field of view.
-  void setKeyPoints();
+    /// Set key points for all cameras
+    void setKeyPoints();
 
-  /// Check if we can select five better key-points.
-  void checkKeyPoints(FeaturePtr ftr);
+    /// Check and update key points based on a new feature
+    void checkKeyPoints(FeaturePtr ftr);
 
-  /// If a point is deleted, we must remove the corresponding key-point.
-  void removeKeyPoint(FeaturePtr ftr);
+    /// Remove a feature from key points if it's deleted
+    void removeKeyPoint(FeaturePtr ftr);
 
-  /// Return number of point observations.
-  inline size_t nObs() const { return fts_.size(); }
+    /// Return number of point observations.
+    inline size_t nObs() const { return fts_.size(); }
 
-  /// Check if a point in (w)orld coordinate frame is visible in the image.
-  bool isVisible(const Vector3d& xyz_w) const;
+    /// Check if a point in (w)orld coordinate frame is visible in any camera's image.
+    bool isVisible(const Vector3d& xyz_w) const;
 
-  /// Full resolution image stored in the frame.
-  inline const cv::Mat& img() const { return img_pyr_[0]; }
+    /// Check if a point in (w)orld coordinate frame is visible in a specific camera's image.
+    bool isVisibleInCam(const Vector3d& xyz_w, int cam_id) const;
 
-  /// Was this frame selected as keyframe?
-  inline bool isKeyframe() const { return is_keyframe_; }
+    /// Full resolution image stored in the frame for a specific camera.
+    inline const cv::Mat& img(int cam_id = 0) const { return img_pyr_[cam_id][0]; }
 
-  /// Transforms point coordinates in world-frame (w) to camera pixel coordinates (c).
-  inline Vector2d w2c(const Vector3d& xyz_w) const { return cam_->world2cam( T_f_w_ * xyz_w ); }
+    /// Was this frame selected as keyframe?
+    inline bool isKeyframe() const { return is_keyframe_; }
 
-  /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f).
-  inline Vector3d c2f(const Vector2d& px) const { return cam_->cam2world(px[0], px[1]); }
+    /// Transforms point coordinates in world-frame (w) to camera pixel coordinates (c) for a specific camera.
+    inline Vector2d w2c(const Vector3d& xyz_w, size_t cam_id) const { return cams_[cam_id]->world2cam(T_f_w_ * xyz_w); }
 
-  /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f).
-  inline Vector3d c2f(const double x, const double y) const { return cam_->cam2world(x, y); }
+    /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f) for a specific camera.
+    inline Vector3d c2f(const Vector2d& px, size_t cam_id) const { return cams_[cam_id]->cam2world(px[0], px[1]); }
 
-  /// Transforms point coordinates in world-frame (w) to camera-frams (f).
-  inline Vector3d w2f(const Vector3d& xyz_w) const { return T_f_w_ * xyz_w; }
+    /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f) for a specific camera.
+    inline Vector3d c2f(const double x, const double y, size_t cam_id) const { return cams_[cam_id]->cam2world(x, y); }
 
-  /// Transforms point from frame unit sphere (f) frame to world coordinate frame (w).
-  inline Vector3d f2w(const Vector3d& f) const { return T_f_w_.inverse() * f; }
+    /// Transforms point coordinates in world-frame (w) to camera-frame (f) for a specific camera.
+    inline Vector3d w2f(const Vector3d& xyz_w, size_t cam_id) const { return T_f_w_ * xyz_w; }
 
-  /// Projects Point from unit sphere (f) in camera pixels (c).
-  inline Vector2d f2c(const Vector3d& f) const { return cam_->world2cam( f ); }
+    /// Transforms point from frame unit sphere (f) in camera to world coordinate frame (w).
+    inline Vector3d f2w(const Vector3d& f) const { return T_f_w_.inverse() * f; }
 
-  /// Return the pose of the frame in the (w)orld coordinate frame.
-  inline Vector3d pos() const { return T_f_w_.inverse().translation(); }
+    /// Projects Point from unit sphere (f) in camera pixels (c) for a specific camera.
+    inline Vector2d f2c(const Vector3d& f, size_t cam_id) const { return cams_[cam_id]->world2cam(f); }
 
-  /// Frame jacobian for projection of 3D point in (f)rame coordinate to
-  /// unit plane coordinates uv (focal length = 1).
-  inline static void jacobian_xyz2uv_change(
-      const Vector3d& xyz_in_world,
+    /// Return the position of the frame in the (w)orld coordinate frame.
+    inline Vector3d pos() const { return T_f_w_.inverse().translation(); }
+
+    /// Frame jacobian for projection of 3D point in (f)rame coordinate to
+    /// unit plane coordinates uv (focal length = 1) for a specific camera.
+    inline static void jacobian_xyz2uv_change(
+        const Vector3d& xyz_in_world,
+        const Vector3d& xyz_in_f,
+        Matrix<double,2,6>& J,
+        SE3& Tbc,
+        SE3& T_ref_w,
+        double fx)
+    {
+        // Implementation remains the same
+        const double x = xyz_in_f[0];
+        const double y = xyz_in_f[1];
+        const double z_inv = 1./xyz_in_f[2];
+        const double z_inv_2 = z_inv*z_inv;
+
+        const double x_in_world = xyz_in_world[0];
+        const double y_in_world = xyz_in_world[1];
+        const double z_in_world = xyz_in_world[2];
+
+        Matrix<double,2,3> J1;
+        Matrix<double,3,6> J2;
+
+        J1(0,0) = -fx * z_inv;              
+        J1(0,1) = 0.0;              
+        J1(0,2) = fx * x * z_inv_2;           
+
+        J1(1,0) = 0.0;           
+        J1(1,1) = -fx * z_inv;           
+        J1(1,2) = fx * y * z_inv_2;         
+
+        J2(0,0) = 1.0;             
+        J2(0,1) = 0.0;                 
+        J2(0,2) = 0.0;           
+        J2(0,3) = 0.0;            
+        J2(0,4) = z_in_world;   
+        J2(0,5) = -y_in_world;        
+
+        J2(1,0) = 0.0;               
+        J2(1,1) = 1.0;            
+        J2(1,2) = 0.0;          
+        J2(1,3) = -z_in_world;     
+        J2(1,4) = 0.0;             
+        J2(1,5) = x_in_world;          
+
+        J2(2,0) = 0.0;      
+        J2(2,1) = 0.0;       
+        J2(2,2) = 1.0;        
+        J2(2,3) = y_in_world;  
+        J2(2,4) = -x_in_world;       
+        J2(2,5) = 0.0;   
+        
+        J = J1 * T_ref_w.rotation_matrix() * J2;  
+    }
+
+    /// Frame jacobian for projection of 3D point in (f)rame coordinate to
+    /// unit plane coordinates uv (focal length = 1) for a specific camera.
+    inline static void jacobian_xyz2uv(
       const Vector3d& xyz_in_f,
-      Matrix<double,2,6>& J,
-      SE3& Tbc,
-      SE3& T_ref_w,
-      double fx)
-  {
-    //Vector3d xyz_in_imu = Tbc * xyz_in_world;
-    //Vector3d xyz_in_imu = xyz_in_world;
-    const double x = xyz_in_f[0];
-    const double y = xyz_in_f[1];
-    //const double z = xyz_in_f[2]; 
-    //! minus symbol is added here.
-    const double z_inv = 1./xyz_in_f[2];
-    const double z_inv_2 = z_inv*z_inv;
+      Matrix<double,2,6>& J)
+    {
+        const double x = xyz_in_f[0];
+        const double y = xyz_in_f[1];
+        const double z_inv = 1./xyz_in_f[2];
+        const double z_inv_2 = z_inv*z_inv;
 
-    const double x_in_world = xyz_in_world[0];
-    const double y_in_world = xyz_in_world[1];
-    const double z_in_world = xyz_in_world[2];
+        J(0,0) = -z_inv;              // -1/z
+        J(0,1) = 0.0;                 // 0
+        J(0,2) = x*z_inv_2;           // x/z^2
+        J(0,3) = y*J(0,2);            // x*y/z^2
+        J(0,4) = -(1.0 + x*J(0,2));  // -(1.0 + x^2/z^2)
+        J(0,5) = y*z_inv;             // y/z
 
-    Matrix<double,2,3> J1;
-    Matrix<double,3,6> J2;
-
-    J1(0,0) = -fx * z_inv;              
-    J1(0,1) = 0.0;              
-    J1(0,2) = fx * x * z_inv_2;           
-
-    J1(1,0) = 0.0;           
-    J1(1,1) = -fx * z_inv;           
-    J1(1,2) = fx * y * z_inv_2;         
-
-    J2(0,0) = 1.0;             
-    J2(0,1) = 0.0;                 
-    J2(0,2) = 0.0;           
-    J2(0,3) = 0.0;            
-    J2(0,4) = z_in_world;   
-    J2(0,5) = -y_in_world;        
-
-    J2(1,0) = 0.0;               
-    J2(1,1) = 1.0;            
-    J2(1,2) = 0.0;          
-    J2(1,3) = -z_in_world;     
-    J2(1,4) = 0.0;             
-    J2(1,5) = x_in_world;          
-
-    J2(2,0) = 0.0;      
-    J2(2,1) = 0.0;       
-    J2(2,2) = 1.0;        
-    J2(2,3) = y_in_world;  
-    J2(2,4) = -x_in_world;       
-    J2(2,5) = 0.0;   
-    
-    J = J1 * T_ref_w.rotation_matrix() * J2;// * J2;   
-  }
-
-  inline static void jacobian_xyz2uv(
-    const Vector3d& xyz_in_f,
-    Matrix<double,2,6>& J)
-  {
-    const double x = xyz_in_f[0];
-    const double y = xyz_in_f[1];
-    const double z_inv = 1./xyz_in_f[2];
-    const double z_inv_2 = z_inv*z_inv;
-
-    J(0,0) = -z_inv;              // -1/z
-    J(0,1) = 0.0;                 // 0
-    J(0,2) = x*z_inv_2;           // x/z^2
-    J(0,3) = y*J(0,2);            // x*y/z^2
-    J(0,4) = -(1.0 + x*J(0,2));   // -(1.0 + x^2/z^2)
-    J(0,5) = y*z_inv;             // y/z
-
-    J(1,0) = 0.0;                 // 0
-    J(1,1) = -z_inv;              // -1/z
-    J(1,2) = y*z_inv_2;           // y/z^2
-    J(1,3) = 1.0 + y*J(1,2);      // 1.0 + y^2/z^2
-    J(1,4) = -J(0,3);             // -x*y/z^2
-    J(1,5) = -x*z_inv;            // x/z
-  }
+        J(1,0) = 0.0;                 // 0
+        J(1,1) = -z_inv;              // -1/z
+        J(1,2) = y*z_inv_2;           // y/z^2
+        J(1,3) = 1.0 + y*J(1,2);      // 1.0 + y^2/z^2
+        J(1,4) = -J(0,3);             // -x*y/z^2
+        J(1,5) = -x*z_inv;            // -x/z
+    }
 };
 
 typedef std::shared_ptr<Frame> FramePtr;
@@ -194,13 +203,13 @@ typedef std::shared_ptr<Frame> FramePtr;
 /// Some helper functions for the frame object.
 namespace frame_utils {
 
-/// Creates an image pyramid of half-sampled images.
-void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr);
+/// Creates an image pyramid of half-sampled images for each camera.
+void createImgPyramid(const std::vector<cv::Mat>& imgs_level_0, int n_levels, ImgPyr& pyr);
 
-/// Get the average depth of the features in the image.
+/// Get the average depth of the features in the images.
 bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min);
 
 } // namespace frame_utils
-} // namespace svo
+} // namespace lidar_selection
 
 #endif // SVO_FRAME_H_

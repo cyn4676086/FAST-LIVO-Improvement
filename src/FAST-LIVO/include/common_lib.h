@@ -12,7 +12,6 @@
 #include <nav_msgs/Odometry.h>
 #include <tf/transform_broadcaster.h>
 #include <eigen_conversions/eigen_msg.h>
-#include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.h>
 #include <boost/shared_ptr.hpp>
@@ -30,9 +29,9 @@ using namespace Sophus;
 
 #define print_line std::cout << __FILE__ << ", " << __LINE__ << std::endl;
 #define PI_M (3.14159265358)
-#define G_m_s2 (9.81)         // Gravaty const in GuangDong/China
-#define DIM_STATE (18)      // Dimension of states (Let Dim(SO(3)) = 3)
-#define DIM_PROC_N (12)      // Dimension of process noise (Let Dim(SO(3)) = 3)
+#define G_m_s2 (9.81)         // Gravity constant in GuangDong/China
+#define DIM_STATE (18)        // Dimension of states (Let Dim(SO(3)) = 3)
+#define DIM_PROC_N (12)       // Dimension of process noise (Let Dim(SO(3)) = 3)
 #define CUBE_LEN  (6.0)
 #define LIDAR_SP_LEN    (2)
 #define INIT_COV   (0.001)
@@ -77,6 +76,7 @@ namespace lidar_selection
 {
     class Point;
     typedef std::shared_ptr<Point> PointPtr;
+
     class VOXEL_POINTS
     {
     public:
@@ -101,48 +101,45 @@ namespace lidar_selection
 // Key of hash table
 class VOXEL_KEY
 {
-
 public:
-  int64_t x;
-  int64_t y;
-  int64_t z;
+    int64_t x;
+    int64_t y;
+    int64_t z;
 
-  VOXEL_KEY(int64_t vx=0, int64_t vy=0, int64_t vz=0): x(vx), y(vy), z(vz){}
+    VOXEL_KEY(int64_t vx=0, int64_t vy=0, int64_t vz=0): x(vx), y(vy), z(vz){}
 
-  bool operator == (const VOXEL_KEY &other) const
-  {
-    return (x==other.x && y==other.y && z==other.z);
-  }
+    bool operator == (const VOXEL_KEY &other) const
+    {
+        return (x==other.x && y==other.y && z==other.z);
+    }
 
-  bool operator<(const VOXEL_KEY& p) const
-  {
-    if (x < p.x) return true;
-    if (x > p.x) return false;
-    if (y < p.y) return true;
-    if (y > p.y) return false;
-    if (z < p.z) return true;
-    if (z > p.z) return false;
-  }
+    bool operator<(const VOXEL_KEY& p) const
+    {
+        if (x < p.x) return true;
+        if (x > p.x) return false;
+        if (y < p.y) return true;
+        if (y > p.y) return false;
+        if (z < p.z) return true;
+        if (z > p.z) return false;
+        return false; // 添加返回值，防止编译警告
+    }
 };
 
 // Hash value
 namespace std
 {
-  template<>
-  struct hash<VOXEL_KEY>
-  {
-    size_t operator() (const VOXEL_KEY &s) const
+    template<>
+    struct hash<VOXEL_KEY>
     {
-      using std::size_t; 
-      using std::hash;
+        size_t operator() (const VOXEL_KEY &s) const
+        {
+            using std::size_t; 
+            using std::hash;
 
-      // Compute individual hash values for first,
-      // second and third and combine them using XOR
-      // and bit shifting:
-    //   return ((hash<int64_t>()(s.x) ^ (hash<int64_t>()(s.y) << 1)) >> 1) ^ (hash<int64_t>()(s.z) << 1);
-      return (((hash<int64_t>()(s.z)*HASH_P)%MAX_N + hash<int64_t>()(s.y))*HASH_P)%MAX_N + hash<int64_t>()(s.x);
-    }
-  };
+            // 优化哈希函数，确保更好的分布
+            return (((hash<int64_t>()(s.z)*HASH_P)%MAX_N + hash<int64_t>()(s.y))*HASH_P)%MAX_N + hash<int64_t>()(s.x);
+        }
+    };
 }
 
 struct MeasureGroup     
@@ -186,7 +183,7 @@ struct LidarMeasureGroup
             }
             std::cout<<"img_time:"<<setprecision(20)<<it->img_offset_time<<endl;
         }
-        std::cout<<"is_lidar_end:"<<this->is_lidar_end<<"lidar_end_time:"<<this->lidar->points.back().curvature/double(1000)<<endl;
+        std::cout<<"is_lidar_end:"<<this->is_lidar_end<<" lidar_end_time:"<<this->lidar->points.back().curvature/double(1000)<<endl;
         std::cout<<"lidar_.points.size(): "<<this->lidar->points.size()<<endl<<endl;
     };
 };
@@ -202,12 +199,13 @@ struct SparseMap
     vector<float*> patch;
     vector<float> values;
     vector<cv::Mat> imgs; 
-    vector<M3D> R_ref;
-    vector<V3D> P_ref;
+    vector<M3D> R_ref;   // 存储每个相机的旋转矩阵
+    vector<V3D> P_ref;   // 存储每个相机的平移向量
     vector<V3D> xyz_ref;
     vector<V2D> px;
-    M3D Rcl;
-    V3D Pcl;
+    M3D Rcl;             // LiDAR 到 IMU 的旋转
+    V3D Pcl;             // LiDAR 到 IMU 的平移
+
     SparseMap()
     {
         this->points.clear();
@@ -220,13 +218,30 @@ struct SparseMap
         this->xyz_ref.clear();
         this->Rcl = M3D::Identity();
         this->Pcl = Zero3d;
-    } ;
+    };
 
-    void set_camera2lidar(vector<double>& R,  vector<double>& P )
+    // 修改后的 set_camera2lidar 方法，支持多个相机
+    void set_camera2lidar(const std::vector<double>& R, const std::vector<double>& P)
     {
-        this->Rcl << MAT_FROM_ARRAY(R);
-        this->Pcl << VEC_FROM_ARRAY(P);
-    };   
+        size_t num_cameras = R.size() / 9; // 每个旋转矩阵包含 9 个元素
+        size_t num_trans = P.size() / 3;    // 每个平移向量包含 3 个元素
+
+        if (num_cameras != num_trans) {
+            throw std::runtime_error("相机数量与外参数据不匹配。");
+        }
+
+        // 调整 R_ref 和 P_ref 的大小
+        R_ref.resize(num_cameras);
+        P_ref.resize(num_cameras);
+
+        for (size_t i = 0; i < num_cameras; ++i) {
+            // 使用 Eigen::Map 直接从 vector<double> 赋值
+            Eigen::Map<const M3D> rot_map(R.data() + i * 9);
+            Eigen::Map<const V3D> transl_map(P.data() + i * 3);
+            R_ref[i] = rot_map;
+            P_ref[i] = transl_map;
+        }
+    }
 
     void reset()
     {
@@ -245,7 +260,6 @@ struct SparseMap
         this->points.erase(this->points.begin()+ind);
         this->patch.erase(this->patch.begin()+ind);
         this->values.erase(this->values.begin()+ind);
-        
     }
 
     void update_point(int ind, float* newP)
@@ -296,63 +310,63 @@ typedef boost::shared_ptr<SparseMap> SparseMapPtr;
 struct StatesGroup
 {
     StatesGroup() {
-		this->rot_end = M3D::Identity();
-		this->pos_end = Zero3d;
+        this->rot_end = M3D::Identity();
+        this->pos_end = Zero3d;
         this->vel_end = Zero3d;
         this->bias_g  = Zero3d;
         this->bias_a  = Zero3d;
         this->gravity = Zero3d;
         this->cov     = Matrix<double,DIM_STATE,DIM_STATE>::Identity() * INIT_COV;
-	};
+    };
 
     StatesGroup(const StatesGroup& b) {
-		this->rot_end = b.rot_end;
-		this->pos_end = b.pos_end;
+        this->rot_end = b.rot_end;
+        this->pos_end = b.pos_end;
         this->vel_end = b.vel_end;
         this->bias_g  = b.bias_g;
         this->bias_a  = b.bias_a;
         this->gravity = b.gravity;
         this->cov     = b.cov;
-	};
+    };
 
     StatesGroup& operator=(const StatesGroup& b)
-	{
+    {
         this->rot_end = b.rot_end;
-		this->pos_end = b.pos_end;
+        this->pos_end = b.pos_end;
         this->vel_end = b.vel_end;
         this->bias_g  = b.bias_g;
         this->bias_a  = b.bias_a;
         this->gravity = b.gravity;
         this->cov     = b.cov;
         return *this;
-	};
+    };
 
     StatesGroup operator+(const Matrix<double, DIM_STATE, 1> &state_add)
-	{
+    {
         StatesGroup a;
-		a.rot_end = this->rot_end * Exp(state_add(0,0), state_add(1,0), state_add(2,0));
-		a.pos_end = this->pos_end + state_add.block<3,1>(3,0);
+        a.rot_end = this->rot_end * Exp(state_add(0,0), state_add(1,0), state_add(2,0));
+        a.pos_end = this->pos_end + state_add.block<3,1>(3,0);
         a.vel_end = this->vel_end + state_add.block<3,1>(6,0);
         a.bias_g  = this->bias_g  + state_add.block<3,1>(9,0);
         a.bias_a  = this->bias_a  + state_add.block<3,1>(12,0);
         a.gravity = this->gravity + state_add.block<3,1>(15,0);
         a.cov     = this->cov;
-		return a;
-	};
+        return a;
+    };
 
     StatesGroup& operator+=(const Matrix<double, DIM_STATE, 1> &state_add)
-	{
+    {
         this->rot_end = this->rot_end * Exp(state_add(0,0), state_add(1,0), state_add(2,0));
-		this->pos_end += state_add.block<3,1>(3,0);
+        this->pos_end += state_add.block<3,1>(3,0);
         this->vel_end += state_add.block<3,1>(6,0);
         this->bias_g  += state_add.block<3,1>(9,0);
         this->bias_a  += state_add.block<3,1>(12,0);
         this->gravity += state_add.block<3,1>(15,0);
-		return *this;
-	};
+        return *this;
+    };
 
     Matrix<double, DIM_STATE, 1> operator-(const StatesGroup& b)
-	{
+    {
         Matrix<double, DIM_STATE, 1> a;
         M3D rotd(b.rot_end.transpose() * this->rot_end);
         a.block<3,1>(0,0)  = Log(rotd);
@@ -361,17 +375,17 @@ struct StatesGroup
         a.block<3,1>(9,0)  = this->bias_g  - b.bias_g;
         a.block<3,1>(12,0) = this->bias_a  - b.bias_a;
         a.block<3,1>(15,0) = this->gravity - b.gravity;
-		return a;
-	};
+        return a;
+    };
 
     void resetpose()
     {
         this->rot_end = M3D::Identity();
-		this->pos_end = Zero3d;
+        this->pos_end = Zero3d;
         this->vel_end = Zero3d;
     }
 
-	M3D rot_end;      // the estimated attitude (rotation matrix) at the end lidar point
+    M3D rot_end;      // the estimated attitude (rotation matrix) at the end lidar point
     V3D pos_end;      // the estimated position at the end lidar point (world frame)
     V3D vel_end;      // the estimated velocity at the end lidar point (world frame)
     V3D bias_g;       // gyroscope bias
@@ -383,13 +397,13 @@ struct StatesGroup
 template<typename T>
 T rad2deg(T radians)
 {
-  return radians * 180.0 / PI_M;
+    return radians * 180.0 / PI_M;
 }
 
 template<typename T>
 T deg2rad(T degrees)
 {
-  return degrees * PI_M / 180.0;
+    return degrees * PI_M / 180.0;
 }
 
 template<typename T>
@@ -476,19 +490,6 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point, const T &
         }
     }
 
-    // for (int j = 0; j < NUM_MATCH_POINTS; j++)
-    // {
-    //     if (fabs(normvec(0) * point[j].x + normvec(1) * point[j].y + normvec(2) * point[j].z + 1.0f) > threshold)
-    //     {
-    //         return false;
-    //     }
-    // }
-
-    // T n = normvec.norm();
-    // pca_result(0) = normvec(0) / n;
-    // pca_result(1) = normvec(1) / n;
-    // pca_result(2) = normvec(2) / n;
-    // pca_result(3) = 1.0 / n; 
     return true;
 }
 

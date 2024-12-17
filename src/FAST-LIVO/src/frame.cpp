@@ -1,19 +1,4 @@
-// This file is part of SVO - Semi-direct Visual Odometry.
-//
-// Copyright (C) 2014 Christian Forster <forster at ifi dot uzh dot ch>
-// (Robotics and Perception Group, University of Zurich, Switzerland).
-//
-// SVO is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
-// Foundation, either version 3 of the License, or any later version.
-//
-// SVO is distributed in the hope that it will be useful, but WITHOUT ANY
-// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-// FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+// frame.cpp
 #include <stdexcept>
 #include <frame.h>
 #include <feature.h>
@@ -28,174 +13,246 @@ namespace lidar_selection {
 
 int Frame::frame_counter_ = 0; 
 
-Frame::Frame(vk::AbstractCamera* cam, const cv::Mat& img) :
+Frame::Frame(const std::vector<vk::AbstractCamera*>& cams, const std::vector<cv::Mat>& imgs) :
     id_(frame_counter_++), 
-    cam_(cam), 
-    key_pts_(5), 
-    is_keyframe_(false)
+    cams_(cams), 
+    key_pts_(cams.size() * 5, nullptr), // 假设每个相机预留5个关键点
+    is_keyframe_(false),
+    T_f_w_(SE3()) // 初始化为单位变换
 {
-  initFrame(img);
+    if(cams_.size() != imgs.size()) {
+        throw std::runtime_error("Frame: Number of cameras and images must be equal.");
+    }
+    initFrame(imgs);
 }
 
 Frame::~Frame()
 {
-  std::for_each(fts_.begin(), fts_.end(), [&](FeaturePtr i){i.reset();});
+    std::for_each(fts_.begin(), fts_.end(), [&](std::shared_ptr<Feature> i){i.reset();});
 }
 
-void Frame::initFrame(const cv::Mat& img)
+void Frame::initFrame(const std::vector<cv::Mat>& imgs)
 {
-  // check image
-  if(img.empty() || img.type() != CV_8UC1 || img.cols != cam_->width() || img.rows != cam_->height())
-    throw std::runtime_error("Frame: provided image has not the same size as the camera model or image is not grayscale");
+    // 检查图像
+    for(size_t cam_id = 0; cam_id < cams_.size(); ++cam_id) {
+        const cv::Mat& img = imgs[cam_id];
+        if(img.empty() || img.type() != CV_8UC3 || img.cols != cams_[cam_id]->width() || img.rows != cams_[cam_id]->height()) {
+            throw std::runtime_error("Frame: Provided image has not the same size as the camera model or image is not grayscale.");
+        }
+    }
 
-  // Set keypoints to nullptr
-  std::for_each(key_pts_.begin(), key_pts_.end(), [&](FeaturePtr ftr){ ftr=nullptr; });
-  
-  ImgPyr ().swap(img_pyr_);
-  img_pyr_.push_back(img);
-  // Build Image Pyramid
-  // frame_utils::createImgPyramid(img, max(Config::nPyrLevels(), Config::kltMaxLevel()+1), img_pyr_);
-  // frame_utils::createImgPyramid(img, 5, img_pyr_); 
+    imgs_ = imgs;
+
+    // 设置关键点为nullptr
+    std::fill(key_pts_.begin(), key_pts_.end(), nullptr);
 }
 
 void Frame::setKeyframe()
 {
-  is_keyframe_ = true;
-  setKeyPoints();
+    is_keyframe_ = true;
+    setKeyPoints();
 }
 
-void Frame::addFeature(FeaturePtr ftr)
+void Frame::addFeature(std::shared_ptr<Feature> ftr)
 {
-  fts_.push_back(ftr);
+    fts_.push_back(ftr);
+}
+
+std::vector<std::shared_ptr<Feature>> Frame::getKeyPointsForCam(int cam_id) const
+{
+    std::vector<std::shared_ptr<Feature>> cam_keypts;
+    size_t start_idx = cam_id * 5;
+    size_t end_idx = start_idx + 5;
+    for(size_t i = start_idx; i < end_idx && i < key_pts_.size(); ++i) {
+        if(key_pts_[i] != nullptr) {
+            cam_keypts.push_back(key_pts_[i]);
+        }
+    }
+    return cam_keypts;
 }
 
 void Frame::setKeyPoints()
 {
-  for(size_t i = 0; i < 5; ++i)
-    if(key_pts_[i] != nullptr)
-      if(key_pts_[i]->point == nullptr)
-        key_pts_[i] = nullptr;
-  std::for_each(fts_.begin(), fts_.end(), [&](FeaturePtr ftr){ if(ftr->point != nullptr) checkKeyPoints(ftr); });
-}
-
-void Frame::checkKeyPoints(FeaturePtr ftr)
-{
-  const int cu = cam_->width()/2;
-  const int cv = cam_->height()/2;
-
-  // center pixel
-  if(key_pts_[0] == nullptr)
-    key_pts_[0] = ftr;
-
-  else if(std::max(std::fabs(ftr->px[0]-cu), std::fabs(ftr->px[1]-cv))
-        < std::max(std::fabs(key_pts_[0]->px[0]-cu), std::fabs(key_pts_[0]->px[1]-cv)))
-    key_pts_[0] = ftr;
-
-  if(ftr->px[0] >= cu && ftr->px[1] >= cv)
-  {
-    if(key_pts_[1] == nullptr)
-      key_pts_[1] = ftr;
-    else if((ftr->px[0]-cu) * (ftr->px[1]-cv)
-          > (key_pts_[1]->px[0]-cu) * (key_pts_[1]->px[1]-cv))
-      key_pts_[1] = ftr;
-  }
-
-  if(ftr->px[0] >= cu && ftr->px[1] < cv)
-  {
-    if(key_pts_[2] == nullptr)
-      key_pts_[2] = ftr;
-    // else if((ftr->px[0]-cu) * (ftr->px[1]-cv)
-    else if((ftr->px[0]-cu) * (cv-ftr->px[1])
-          // > (key_pts_[2]->px[0]-cu) * (key_pts_[2]->px[1]-cv))
-          > (key_pts_[2]->px[0]-cu) * (cv-key_pts_[2]->px[1]))
-      key_pts_[2] = ftr;
-  }
-
-  if(ftr->px[0] < cu && ftr->px[1] < cv)
-  {
-    if(key_pts_[3] == nullptr)
-      key_pts_[3] = ftr;
-    else if((ftr->px[0]-cu) * (ftr->px[1]-cv)
-          > (key_pts_[3]->px[0]-cu) * (key_pts_[3]->px[1]-cv))
-      key_pts_[3] = ftr;
-  }
-
-  if(ftr->px[0] < cu && ftr->px[1] >= cv)  
-  // if(ftr->px[0] < cv && ftr->px[1] >= cv)
-  {
-    if(key_pts_[4] == nullptr)
-      key_pts_[4] = ftr;
-
-    else if(cu-(ftr->px[0]) * (ftr->px[1]-cv) 
-          > (cu-key_pts_[4]->px[0]) * (key_pts_[4]->px[1]-cv))      
-      key_pts_[4] = ftr;
-  }
-}
-
-void Frame::removeKeyPoint(FeaturePtr ftr)
-{
-  bool found = false;
-  std::for_each(key_pts_.begin(), key_pts_.end(), [&](FeaturePtr& i){
-    if(i == ftr) {
-      i = nullptr;
-      found = true;
+    // 首先将无效的关键点设为nullptr
+    for(auto& kp : key_pts_) {
+        if(kp != nullptr && kp->point == nullptr) {
+            kp = nullptr;
+        }
     }
-  });
-  if(found)
-    setKeyPoints();
+
+    // 遍历所有特征点，更新关键点
+    for(auto& ftr : fts_) {
+        if(ftr->point != nullptr) {
+            checkKeyPoints(ftr);
+        }
+    }
 }
 
-bool Frame::isVisible(const Vector3d& xyz_w) const
+void Frame::checkKeyPoints(std::shared_ptr<Feature> ftr)
 {
-  Vector3d xyz_f = T_f_w_*xyz_w;
+    // 根据 camera_id 确定对应的关键点索引
+    int cam_id = ftr->camera_id;
+    if(cam_id < 0 || static_cast<size_t>(cam_id) >= cams_.size()) {
+        throw std::runtime_error("Frame::checkKeyPoints: Invalid camera_id.");
+    }
 
-  if(xyz_f.z() < 0.0)
-    return false; // point is behind the camera
-  Vector2d px = f2c(xyz_f);
+    // 每个相机预留5个关键点，索引范围 [cam_id*5, cam_id*5 +4]
+    size_t base_idx = cam_id * 5;
 
-  if(px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cam_->width() && px[1] < cam_->height())
-    return true;
-  return false;
+    const int cu = cams_[cam_id]->width() / 2;
+    const int cv = cams_[cam_id]->height() / 2;
+
+    // 中心像素
+    if(key_pts_[base_idx] == nullptr) {
+        key_pts_[base_idx] = ftr;
+    }
+    else {
+        double current_dist = std::max(std::fabs(ftr->px[0] - cu), std::fabs(ftr->px[1] - cv));
+        double existing_dist = std::max(std::fabs(key_pts_[base_idx]->px[0] - cu), std::fabs(key_pts_[base_idx]->px[1] - cv));
+        if(current_dist < existing_dist) {
+            key_pts_[base_idx] = ftr;
+        }
+    }
+
+    // 第1象限
+    if(ftr->px[0] >= cu && ftr->px[1] >= cv) {
+        size_t idx = base_idx + 1;
+        if(idx >= key_pts_.size()) return;
+        if(key_pts_[idx] == nullptr) {
+            key_pts_[idx] = ftr;
+        }
+        else {
+            double current_product = (ftr->px[0] - cu) * (ftr->px[1] - cv);
+            double existing_product = (key_pts_[idx]->px[0] - cu) * (key_pts_[idx]->px[1] - cv);
+            if(current_product > existing_product) {
+                key_pts_[idx] = ftr;
+            }
+        }
+    }
+
+    // 第4象限
+    if(ftr->px[0] >= cu && ftr->px[1] < cv) {
+        size_t idx = base_idx + 2;
+        if(idx >= key_pts_.size()) return;
+        if(key_pts_[idx] == nullptr) {
+            key_pts_[idx] = ftr;
+        }
+        else {
+            double current_product = (ftr->px[0] - cu) * (cv - ftr->px[1]);
+            double existing_product = (key_pts_[idx]->px[0] - cu) * (cv - key_pts_[idx]->px[1]);
+            if(current_product > existing_product) {
+                key_pts_[idx] = ftr;
+            }
+        }
+    }
+
+    // 第3象限
+    if(ftr->px[0] < cu && ftr->px[1] < cv) {
+        size_t idx = base_idx + 3;
+        if(idx >= key_pts_.size()) return;
+        if(key_pts_[idx] == nullptr) {
+            key_pts_[idx] = ftr;
+        }
+        else {
+            double current_product = (ftr->px[0] - cu) * (ftr->px[1] - cv);
+            double existing_product = (key_pts_[idx]->px[0] - cu) * (key_pts_[idx]->px[1] - cv);
+            if(current_product > existing_product) {
+                key_pts_[idx] = ftr;
+            }
+        }
+    }
+
+    // 第2象限
+    if(ftr->px[0] < cu && ftr->px[1] >= cv) {
+        size_t idx = base_idx + 4;
+        if(idx >= key_pts_.size()) return;
+        if(key_pts_[idx] == nullptr) {
+            key_pts_[idx] = ftr;
+        }
+        else {
+            double current_metric = (cu - ftr->px[0]) * (ftr->px[1] - cv);
+            double existing_metric = (cu - key_pts_[idx]->px[0]) * (key_pts_[idx]->px[1] - cv);
+            if(current_metric > existing_metric) {
+                key_pts_[idx] = ftr;
+            }
+        }
+    }
 }
+
+void Frame::removeKeyPoint(std::shared_ptr<Feature> ftr)
+{
+    bool found = false;
+    for(auto& kp : key_pts_) {
+        if(kp == ftr) {
+            kp = nullptr;
+            found = true;
+        }
+    }
+    if(found) {
+        setKeyPoints();
+    }
+}
+
+bool Frame::isVisible(const Eigen::Vector3d& xyz_w) const
+{
+    Eigen::Vector3d xyz_f = T_f_w_ * xyz_w;
+
+    if(xyz_f.z() < 0.0)
+        return false; // 点在相机后方
+
+    Eigen::Vector2d px = f2c(xyz_f);
+
+    // 检查所有相机的视野
+    for(const auto& cam : cams_) {
+        if(px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cam->width() && px[1] < cam->height()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Frame::isVisibleInCam(const Eigen::Vector3d& xyz_w, int cam_id) const
+{
+    if(cam_id < 0 || static_cast<size_t>(cam_id) >= cams_.size())
+        return false;
+
+    Eigen::Vector3d xyz_f = T_f_w_ * xyz_w;
+
+    if(xyz_f.z() < 0.0)
+        return false; // 点在相机后方
+
+    Eigen::Vector2d px = f2c(xyz_f);
+
+    return (px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cams_[cam_id]->width() && px[1] < cams_[cam_id]->height());
+}
+
 
 /// Utility functions for the Frame class
 namespace frame_utils {
 
-void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr)
-{
-  pyr.resize(n_levels);
-  pyr[0] = img_level_0;
-
-  for(int i=1; i<n_levels; ++i)
-  {
-    pyr[i] = cv::Mat(pyr[i-1].rows/2, pyr[i-1].cols/2, CV_8U);
-    vk::halfSample(pyr[i-1], pyr[i]);
-  }
-}
-
-
 bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
 {
-  vector<double> depth_vec;
-  depth_vec.reserve(frame.fts_.size());
-  depth_min = std::numeric_limits<double>::max(); 
-  for(auto it=frame.fts_.begin(), ite=frame.fts_.end(); it!=ite; ++it)
-  {
-    if((*it)->point != nullptr) 
+    std::vector<double> depth_vec;
+    depth_vec.reserve(frame.getFeatures().size());
+    depth_min = std::numeric_limits<double>::max(); 
+    for(auto it = frame.getFeatures().begin(), ite = frame.getFeatures().end(); it != ite; ++it)
     {
-      const double z = frame.w2f((*it)->point->pos_).z();
-      depth_vec.push_back(z);
-      depth_min = fmin(z, depth_min);
+        if((*it)->point != nullptr) 
+        {
+            const double z = frame.T_f_w_.translation().z(); // 根据需要调整
+            depth_vec.push_back(z);
+            depth_min = std::min(z, depth_min);
+        }
     }
-  }
-  if(depth_vec.empty())
-  {
-    cout<<"Cannot set scene depth. Frame has no point-observations!"<<endl;
-    return false;
-  }
-  depth_mean = vk::getMedian(depth_vec);
-  return true;
+    if(depth_vec.empty())
+    {
+        std::cout << "Cannot set scene depth. Frame has no point-observations!" << std::endl;
+        return false;
+    }
+    depth_mean = vk::getMedian(depth_vec);
+    return true;
 }
 
 } // namespace frame_utils
+
 } // namespace lidar_selection

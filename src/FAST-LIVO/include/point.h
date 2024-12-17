@@ -21,6 +21,8 @@
 #include <common_lib.h>
 #include <feature.h>
 #include <frame.h>
+#include <mutex> // 添加此行
+
 
 namespace lidar_selection {
 
@@ -88,6 +90,12 @@ public:
   /// Optimize point position through minimizing the reprojection error.
   void optimize(const size_t n_iter);
 
+  // 获取观测数量。
+  inline size_t nRefs() const { 
+      std::lock_guard<std::mutex> lock(mutex_);
+      return obs_.size(); 
+  }
+  
   /// Jacobian of point projection on unit plane (focal length = 1) in frame (f).
   inline static void jacobian_xyz2uv(
       const Vector3d& p_in_f,

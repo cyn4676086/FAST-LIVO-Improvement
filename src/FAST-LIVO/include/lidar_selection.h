@@ -14,28 +14,41 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <set>
+#include <vector>
+#include <memory>
 
 namespace lidar_selection {
 
 class LidarSelector {
   public:
     int grid_size;
-    vk::AbstractCamera* cam;
+    std::vector<vk::AbstractCamera*> cams; // 多相机支持
     SparseMap* sparse_map;
     StatesGroup* state;
     StatesGroup* state_propagat;
-    M3D Rli, Rci, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
-    V3D Pli, Pci, Pcw;
-    int* align_flag;
-    int* grid_num;
-    int* map_index;
-    float* map_dist;
-    float* map_value;
-    float* patch_with_border_;
-    vector<float> patch_cache;
+    
+    // 雷达到IMU的外参（单一）
+    M3D Rli; 
+    V3D Pli; 
+
+    // 由 common_lib.h 中的 SparseMap 处理多相机外参
+    // std::vector<M3D> R_ref; 
+    // std::vector<V3D> P_ref;
+
+    M3D Rci, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
+    V3D Pci, Pcw;
+    
+    std::vector<int*> align_flag;
+    std::vector<int*> grid_num;
+    std::vector<int*> map_index;
+    std::vector<float*> map_dist;
+    std::vector<float*> map_value;
+    std::vector<float*> patch_with_border_;
+    std::vector<std::vector<float>> patch_cache; // 每个相机对应的patch缓存
+    
     int width, height, grid_n_width, grid_n_height, length;
     SubSparseMap* sub_sparse_map;
-    double fx,fy,cx,cy;
+    
     bool ncc_en;
     int debug, patch_size, patch_size_total, patch_size_half;
     int count_img, MIN_IMG_COUNT;
@@ -55,7 +68,7 @@ class LidarSelector {
     MatrixXd H_sub, K;
     cv::flann::Index Kdtree;
 
-    LidarSelector(const int grid_size, SparseMap* sparse_map);
+    LidarSelector(const int grid_size, SparseMap* sparse_map, const std::vector<vk::AbstractCamera*>& cameras);
 
     ~LidarSelector();
 
@@ -64,7 +77,7 @@ class LidarSelector {
     void addFromSparseMap(cv::Mat img, PointCloudXYZI::Ptr pg);
     void addSparseMap(cv::Mat img, PointCloudXYZI::Ptr pg);
     void FeatureAlignment(cv::Mat img);
-    void set_extrinsic(const V3D &transl, const M3D &rot);
+    void set_extrinsic(const V3D &transl, const M3D &rot); // 不作修改
     void init();
     void getpatch(cv::Mat img, V3D pg, float* patch_tmp, int level);
     void getpatch(cv::Mat img, V2D pc, float* patch_tmp, int level);
@@ -167,6 +180,6 @@ class LidarSelector {
 };
   typedef boost::shared_ptr<LidarSelector> LidarSelectorPtr;
 
-} // namespace lidar_detection
+} // namespace lidar_selection
 
 #endif // LIDAR_SELECTION_H_
