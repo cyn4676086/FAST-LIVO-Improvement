@@ -1,5 +1,4 @@
 // map.cpp
-// 根据之前的交流进行了修改，这里主要关注如何处理多相机的特征点
 
 #include <set>
 #include <map.h>
@@ -152,29 +151,6 @@ void Map::addKeyframe(FramePtr new_keyframe)
 {
     std::lock_guard<std::mutex> lock(map_mutex_);
     keyframes_.push_back(new_keyframe);
-    if(new_keyframe->getId() > MaxKFid)
-        MaxKFid = new_keyframe->getId();
-
-    // 将关键帧中的所有特征点转换为地图点
-    for(auto& ftr : new_keyframe->getFeatures())
-    {
-        if(ftr->point != nullptr)
-        {
-            std::shared_ptr<Point> pt = ftr->point;
-            if(!pt)
-            {
-                // 创建新的 Point 并关联
-                pt = std::make_shared<Point>(ftr->pos());
-                ftr->point = pt;
-                map_points_.push_back(pt);
-            }
-            else
-            {
-                // 已存在的 Point，添加观测
-                pt->addFrameRef(ftr);
-            }
-        }
-    }
 }
 
 void Map::addPoint(std::shared_ptr<Point> point)

@@ -19,39 +19,59 @@
 
 namespace lidar_selection {
 
+struct CameraInfo {
+    vk::AbstractCamera* cam;  // 指向相机对象的指针
+    int cam_id;
+
+    // 内参
+    double fx;
+    double fy;
+    double cx;
+    double cy;
+
+    // 外参
+    M3D Rcl;  // 相机旋转矩阵到雷达
+    V3D Pcl;  // 相机平移向量到雷达
+    M3D Rci;  // 相机到 IMU 的旋转矩阵
+    V3D Pci;  // 相机到 IMU 的平移向量
+    M3D Rcw;  // 相机到世界的旋转矩阵
+    V3D Pcw;  // 相机到世界的平移向量
+
+    // 雅可比矩阵
+    M3D Jdphi_dR;  // 姿态变化对旋转矩阵的雅可比矩阵
+    M3D Jdp_dR;    // 位置变化对旋转矩阵的雅可比矩阵
+    V3D Jdp_dt;    // 位置变化对平移向量的雅可比矩阵
+
+    // 图像尺寸
+    int width;
+    int height;
+};
+
+
 class LidarSelector {
+  //多个相机 一个地图
   public:
     int grid_size;
-    std::vector<vk::AbstractCamera*> cams; // 多相机支持
+    std::vector<CameraInfo> cameras;  // 支持多个相机
     SparseMap* sparse_map;
     StatesGroup* state;
     StatesGroup* state_propagat;
     
-    // 雷达到IMU的外参（单一）
     M3D Rli; 
     V3D Pli; 
-
-    // 由 common_lib.h 中的 SparseMap 处理多相机外参
-    // std::vector<M3D> R_ref; 
-    // std::vector<V3D> P_ref;
-
-    M3D Rci, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
-    V3D Pci, Pcw;
-    
-    std::vector<int*> align_flag;
-    std::vector<int*> grid_num;
-    std::vector<int*> map_index;
-    std::vector<float*> map_dist;
-    std::vector<float*> map_value;
-    std::vector<float*> patch_with_border_;
-    std::vector<std::vector<float>> patch_cache; // 每个相机对应的patch缓存
-    
-    int width, height, grid_n_width, grid_n_height, length;
+    int* align_flag;
+    int* grid_num;
+    int* map_index;
+    float* map_dist;
+    float* map_value;
+    float* patch_with_border_;
+    vector<float> patch_cache;
+    int width,height,grid_n_width, grid_n_height, length;
     SubSparseMap* sub_sparse_map;
-    
+
     bool ncc_en;
     int debug, patch_size, patch_size_total, patch_size_half;
-    int count_img, MIN_IMG_COUNT;
+    int MIN_IMG_COUNT;
     int NUM_MAX_ITERATIONS;
     vk::robust_cost::WeightFunctionPtr weight_function_;
     float weight_scale_;
@@ -68,26 +88,28 @@ class LidarSelector {
     MatrixXd H_sub, K;
     cv::flann::Index Kdtree;
 
-    LidarSelector(const int grid_size, SparseMap* sparse_map, const std::vector<vk::AbstractCamera*>& cameras);
+     // 构造函数：接受网格大小、稀疏地图指针和多个相机指针
+    LidarSelector(const int grid_size, SparseMap* sparse_map, const std::vector<vk::AbstractCamera*>& camera_ptrs);
 
     ~LidarSelector();
 
-    void detect(cv::Mat img, PointCloudXYZI::Ptr pg);
+    // 修改后的函数以处理多个相机
+    void detect(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg);
     float CheckGoodPoints(cv::Mat img, V2D uv);
-    void addFromSparseMap(cv::Mat img, PointCloudXYZI::Ptr pg);
-    void addSparseMap(cv::Mat img, PointCloudXYZI::Ptr pg);
-    void FeatureAlignment(cv::Mat img);
+    void addFromSparseMap(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg);
+    void addSparseMap(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg);
+    void FeatureAlignment(const std::vector<cv::Mat>& imgs);
     void set_extrinsic(const V3D &transl, const M3D &rot); // 不作修改
+    void set_camera2lidar(const std::vector<double>& R, const std::vector<double>& P)
     void init();
     void getpatch(cv::Mat img, V3D pg, float* patch_tmp, int level);
-    void getpatch(cv::Mat img, V2D pc, float* patch_tmp, int level);
     void dpi(V3D p, MD(2,3)& J);
-    float UpdateState(cv::Mat img, float total_residual, int level);
+    float UpdateState(const std::vector<cv::Mat>& imgs, float total_residual, int level);
     double NCC(float* ref_patch, float* cur_patch, int patch_size);
 
-    void ComputeJ(cv::Mat img);
+    void ComputeJ(const std::vector<cv::Mat>& imgs);
     void reset_grid();
-    void addObservation(cv::Mat img);
+    void addObservation(const std::vector<cv::Mat>& imgs);
     void reset();
     bool initialization(FramePtr cur_frame, PointCloudXYZI::Ptr pg);   
     void createPatchFromPatchWithBorder(float* patch_with_border, float* patch_ref);
@@ -128,17 +150,16 @@ class LidarSelector {
     PointCloudXYZI::Ptr Map_points_output;
     PointCloudXYZI::Ptr pg_down;
     pcl::VoxelGrid<PointType> downSizeFilter;
-    unordered_map<VOXEL_KEY, VOXEL_POINTS*> feat_map;
-    unordered_map<VOXEL_KEY, float> sub_feat_map; //timestamp
-    unordered_map<int, Warp*> Warp_map; // reference frame id, A_cur_ref and search_level
+    std::unordered_map<VOXEL_KEY, VOXEL_POINTS*, VOXEL_KEY_Hash> feat_map;
+    std::unordered_map<VOXEL_KEY, float, VOXEL_KEY_Hash> sub_feat_map; // timestamp
+    std::unordered_map<int, Warp*> Warp_map; // reference frame id, A_cur_ref and search_level
 
-    vector<VOXEL_KEY> occupy_postions;
-    set<VOXEL_KEY> sub_postion;
-    vector<PointPtr> voxel_points_;
-    vector<V3D> add_voxel_points_;
+    std::vector<VOXEL_KEY> occupy_postions;
+    std::set<VOXEL_KEY> sub_postion;
+    std::vector<PointPtr> voxel_points_;
+    std::vector<V3D> add_voxel_points_;
 
-
-    cv::Mat img_cp, img_rgb;
+    cv::Mat img_cp, img_rgb;//还需修改
     std::vector<FramePtr> overlap_kfs_;
     FramePtr new_frame_;
     FramePtr last_kf_;
@@ -154,7 +175,7 @@ class LidarSelector {
       TYPE_UNKNOWN
     };
 
-  private:
+private:
     struct Candidate 
     {
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -169,7 +190,7 @@ class LidarSelector {
     struct Grid
     {
       CandidateGrid cells;
-      vector<int> cell_order;
+      std::vector<int> cell_order;
       int cell_size;
       int grid_n_cols;
       int grid_n_rows;
@@ -178,7 +199,8 @@ class LidarSelector {
 
     Grid grid_;
 };
-  typedef boost::shared_ptr<LidarSelector> LidarSelectorPtr;
+
+typedef boost::shared_ptr<LidarSelector> LidarSelectorPtr;
 
 } // namespace lidar_selection
 

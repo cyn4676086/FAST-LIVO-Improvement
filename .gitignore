@@ -1,0 +1,6 @@
+*.log
+./build
+./devel
+./src/PCD
+./src/Log
+

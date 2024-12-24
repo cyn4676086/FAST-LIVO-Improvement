@@ -8,15 +8,18 @@
 #include <vikit/vision.h>
 #include <vikit/performance_monitor.h>
 // #include <fast/fast.h>
+#include <algorithm>
+#include <iostream>
 
 namespace lidar_selection {
 
+// 初始化静态成员变量
 int Frame::frame_counter_ = 0; 
 
 Frame::Frame(const std::vector<vk::AbstractCamera*>& cams, const std::vector<cv::Mat>& imgs) :
     id_(frame_counter_++), 
     cams_(cams), 
-    key_pts_(cams.size() * 5, nullptr), // 假设每个相机预留5个关键点
+    key_pts_(cams.size() * 5, nullptr), // 每个相机预留5个关键点
     is_keyframe_(false),
     T_f_w_(SE3()) // 初始化为单位变换
 {
@@ -28,7 +31,8 @@ Frame::Frame(const std::vector<vk::AbstractCamera*>& cams, const std::vector<cv:
 
 Frame::~Frame()
 {
-    std::for_each(fts_.begin(), fts_.end(), [&](std::shared_ptr<Feature> i){i.reset();});
+    // 清理特征点
+    std::for_each(fts_.begin(), fts_.end(), [&](std::shared_ptr<Feature> i){ i.reset(); });
 }
 
 void Frame::initFrame(const std::vector<cv::Mat>& imgs)
@@ -36,12 +40,10 @@ void Frame::initFrame(const std::vector<cv::Mat>& imgs)
     // 检查图像
     for(size_t cam_id = 0; cam_id < cams_.size(); ++cam_id) {
         const cv::Mat& img = imgs[cam_id];
-        if(img.empty() || img.type() != CV_8UC3 || img.cols != cams_[cam_id]->width() || img.rows != cams_[cam_id]->height()) {
-            throw std::runtime_error("Frame: Provided image has not the same size as the camera model or image is not grayscale.");
+        if(img.empty() || img.type() != CV_8UC1 || img.cols != cams_[cam_id]->width() || img.rows != cams_[cam_id]->height()) {
+            throw std::runtime_error("Frame: Provided image has not the same size as the camera model or image is not BGR.");
         }
     }
-
-    imgs_ = imgs;
 
     // 设置关键点为nullptr
     std::fill(key_pts_.begin(), key_pts_.end(), nullptr);
@@ -200,16 +202,16 @@ bool Frame::isVisible(const Eigen::Vector3d& xyz_w) const
     if(xyz_f.z() < 0.0)
         return false; // 点在相机后方
 
-    Eigen::Vector2d px = f2c(xyz_f);
-
-    // 检查所有相机的视野
-    for(const auto& cam : cams_) {
-        if(px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cam->width() && px[1] < cam->height()) {
+    // 遍历每个相机，检查点是否在相机视野内
+    for(size_t cam_id = 0; cam_id < cams_.size(); ++cam_id) {
+        Eigen::Vector2d px = f2c(xyz_f, cam_id); // 传递 cam_id
+        if(px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cams_[cam_id]->width() && px[1] < cams_[cam_id]->height()) {
             return true;
         }
     }
     return false;
 }
+
 
 bool Frame::isVisibleInCam(const Eigen::Vector3d& xyz_w, int cam_id) const
 {
@@ -221,38 +223,9 @@ bool Frame::isVisibleInCam(const Eigen::Vector3d& xyz_w, int cam_id) const
     if(xyz_f.z() < 0.0)
         return false; // 点在相机后方
 
-    Eigen::Vector2d px = f2c(xyz_f);
+    Eigen::Vector2d px = f2c(xyz_f, cam_id); // 传递 cam_id
 
     return (px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cams_[cam_id]->width() && px[1] < cams_[cam_id]->height());
 }
-
-
-/// Utility functions for the Frame class
-namespace frame_utils {
-
-bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
-{
-    std::vector<double> depth_vec;
-    depth_vec.reserve(frame.getFeatures().size());
-    depth_min = std::numeric_limits<double>::max(); 
-    for(auto it = frame.getFeatures().begin(), ite = frame.getFeatures().end(); it != ite; ++it)
-    {
-        if((*it)->point != nullptr) 
-        {
-            const double z = frame.T_f_w_.translation().z(); // 根据需要调整
-            depth_vec.push_back(z);
-            depth_min = std::min(z, depth_min);
-        }
-    }
-    if(depth_vec.empty())
-    {
-        std::cout << "Cannot set scene depth. Frame has no point-observations!" << std::endl;
-        return false;
-    }
-    depth_mean = vk::getMedian(depth_vec);
-    return true;
-}
-
-} // namespace frame_utils
 
 } // namespace lidar_selection

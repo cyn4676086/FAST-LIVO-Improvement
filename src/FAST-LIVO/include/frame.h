@@ -1,19 +1,4 @@
-// This file is part of SVO - Semi-direct Visual Odometry.
-//
-// Copyright (C) 2014 Christian Forster <forster at ifi dot uzh dot ch>
-// (Robotics and Perception Group, University of Zurich, Switzerland).
-//
-// SVO is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
-// Foundation, either version 3 of the License, or any later version.
-//
-// SVO is distributed in the hope that it will be useful, but WITHOUT ANY
-// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-// FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+// frame.h
 #ifndef SVO_FRAME_H_
 #define SVO_FRAME_H_
 
@@ -49,9 +34,9 @@ public:
     std::vector<vk::AbstractCamera*> cams_;              //!< Vector of camera models for multi-camera support.
     SE3                           T_f_w_;                 //!< Transform (f)rame from (w)orld.
     Matrix<double, 6, 6>          Cov_;                   //!< Covariance.
-    ImgPyr                        img_pyr_;               //!< Image Pyramid for each camera.
+    std::vector<std::vector<cv::Mat>>  img_pyr_;
     Features                      fts_;                   //!< List of features in the images.
-    std::vector<FeaturePtr>        key_pts_;               //!< Features used to detect overlapping FOV for each camera (5 per camera).
+    std::vector<FeaturePtr>        key_pts_;               //!< 关键帧 重叠视野检查 5个位置快速检查 camid*5偏移量
     bool                          is_keyframe_;           //!< Was this frame selected as keyframe
 
     /// Constructor accepting multiple cameras and their corresponding images
@@ -95,8 +80,6 @@ public:
     /// Was this frame selected as keyframe?
     inline bool isKeyframe() const { return is_keyframe_; }
 
-    /// Transforms point coordinates in world-frame (w) to camera pixel coordinates (c) for a specific camera.
-    inline Vector2d w2c(const Vector3d& xyz_w, size_t cam_id) const { return cams_[cam_id]->world2cam(T_f_w_ * xyz_w); }
 
     /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f) for a specific camera.
     inline Vector3d c2f(const Vector2d& px, size_t cam_id) const { return cams_[cam_id]->cam2world(px[0], px[1]); }
@@ -104,17 +87,28 @@ public:
     /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f) for a specific camera.
     inline Vector3d c2f(const double x, const double y, size_t cam_id) const { return cams_[cam_id]->cam2world(x, y); }
 
-    /// Transforms point coordinates in world-frame (w) to camera-frame (f) for a specific camera.
-    inline Vector3d w2f(const Vector3d& xyz_w, size_t cam_id) const { return T_f_w_ * xyz_w; }
+    inline Vector3d w2f(const Vector3d& xyz_w, size_t cam_id) const {
+        Vector3d xyz_in_frame = T_f_w_ * xyz_w; // Frame参考坐标系（如IMU系下）
+        Vector3d xyz_in_cam = Rci_list[cam_id] * xyz_in_frame + Pci_list[cam_id];
+        return xyz_in_cam;
+    }
+
+    inline Vector2d w2c(const Vector3d& xyz_w, size_t cam_id) const {
+        Vector3d xyz_in_cam = w2f(xyz_w, cam_id);
+        return cams_[cam_id]->world2cam(xyz_in_cam);
+    }
 
     /// Transforms point from frame unit sphere (f) in camera to world coordinate frame (w).
-    inline Vector3d f2w(const Vector3d& f) const { return T_f_w_.inverse() * f; }
+    inline Vector3d f2w(const Vector3d& xyz_w, size_t cam_id) const { return T_f_w_.inverse() * xyz_w; }
 
     /// Projects Point from unit sphere (f) in camera pixels (c) for a specific camera.
     inline Vector2d f2c(const Vector3d& f, size_t cam_id) const { return cams_[cam_id]->world2cam(f); }
-
+    
     /// Return the position of the frame in the (w)orld coordinate frame.
     inline Vector3d pos() const { return T_f_w_.inverse().translation(); }
+
+    /// Return the list of features (const reference)
+    const Features& getFeatures() const { return fts_; }
 
     /// Frame jacobian for projection of 3D point in (f)rame coordinate to
     /// unit plane coordinates uv (focal length = 1) for a specific camera.
@@ -200,16 +194,6 @@ public:
 
 typedef std::shared_ptr<Frame> FramePtr;
 
-/// Some helper functions for the frame object.
-namespace frame_utils {
-
-/// Creates an image pyramid of half-sampled images for each camera.
-void createImgPyramid(const std::vector<cv::Mat>& imgs_level_0, int n_levels, ImgPyr& pyr);
-
-/// Get the average depth of the features in the images.
-bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min);
-
-} // namespace frame_utils
 } // namespace lidar_selection
 
 #endif // SVO_FRAME_H_

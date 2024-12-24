@@ -62,7 +62,8 @@ condition_variable sig_buffer;
 
 // mutex mtx_buffer_pointcloud;
 
-struct CameraInfo {
+struct Cameras {
+    vk::AbstractCamera* cam; // 添加相机对象指针
     int cam_id;
     std::string img_topic;
     Eigen::Matrix3d Rcl;
@@ -79,22 +80,21 @@ struct CameraInfo {
     double cam_d3;
 };
 string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic, img_topic, config_file;;
+string map_file_path, lid_topic, imu_topic, config_file;;
 M3D Eye3d(M3D::Identity());
 M3F Eye3f(M3F::Identity());
 V3D Zero3d(0, 0, 0);
 V3F Zero3f(0, 0, 0);
 Vector3d Lidar_offset_to_IMU(Zero3d);
 M3D Lidar_rot_to_IMU(Eye3d);
-int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0,\
-    effct_feat_num = 0, time_log_counter = 0, publish_count = 0;
+int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0,effct_feat_num = 0, time_log_counter = 0, publish_count = 0;
 int MIN_IMG_COUNT = 0;
 
 double res_mean_last = 0.05;
 //double gyr_cov_scale, acc_cov_scale;
 double gyr_cov_scale = 0, acc_cov_scale = 0;
 //double last_timestamp_lidar, last_timestamp_imu = -1.0;
-double last_timestamp_lidar = 0, last_timestamp_imu = -1.0, last_timestamp_img = -1.0;
+double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
 //double filter_size_corner_min, filter_size_surf_min, filter_size_map_min, fov_deg;
 double filter_size_corner_min = 0, filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
 //double cube_len, HALF_FOV_COS, total_distance, lidar_end_time, first_lidar_time = 0.0;
@@ -126,8 +126,12 @@ vector<BoxPointType> cub_needad;
 deque<PointCloudXYZI::Ptr>  lidar_buffer;
 deque<double>          time_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
-deque<cv::Mat> img_buffer;
-deque<double>          img_time_buffer;
+
+std::vector<deque<cv::Mat>> img_buffers;    // 每个相机一个buffer
+std::vector<deque<double>> img_time_buffers;
+std::vector<double> last_timestamp_imgs;    // 记录每个相机最后一帧图像的时间戳
+
+
 vector<bool> point_selected_surf; 
 vector<vector<int>> pointSearchInd_surf; 
 vector<PointVector> Nearest_Points; 
@@ -137,7 +141,7 @@ vector<double> extrinR(9, 0.0);
 vector<double> cameraextrinT(3, 0.0);
 vector<double> cameraextrinR(9, 0.0);
 double total_residual;
-double LASER_POINT_COV, IMG_POINT_COV, cam_fx, cam_fy, cam_cx, cam_cy; 
+double LASER_POINT_COV, IMG_POINT_COV; 
 bool flg_EKF_inited, flg_EKF_converged, EKF_stop_flg = 0;
 //surf feature in map
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
@@ -154,16 +158,8 @@ PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI());
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
-
-#ifdef USE_ikdtree
-    #ifdef USE_ikdforest
-    KD_FOREST ikdforest;
-    #else
-    KD_TREE ikdtree;
-    #endif
-#else
 pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap(new pcl::KdTreeFLANN<PointType>());
-#endif
+
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
@@ -365,7 +361,7 @@ void lasermap_fov_segment()
         Localmap_Initialized = true;
         return;
     }
-    // printf("Local Map is (%0.2f,%0.2f) (%0.2f,%0.2f) (%0.2f,%0.2f)\n", LocalMap_Points.vertex_min[0],LocalMap_Points.vertex_max[0],LocalMap_Points.vertex_min[1],LocalMap_Points.vertex_max[1],LocalMap_Points.vertex_min[2],LocalMap_Points.vertex_max[2]);
+    printf("Local Map is (%0.2f,%0.2f) (%0.2f,%0.2f) (%0.2f,%0.2f)\n", LocalMap_Points.vertex_min[0],LocalMap_Points.vertex_max[0],LocalMap_Points.vertex_min[1],LocalMap_Points.vertex_max[1],LocalMap_Points.vertex_min[2],LocalMap_Points.vertex_max[2]);
     float dist_to_map_edge[3][2];
     bool need_move = false;
     for (int i = 0; i < 3; i++){
@@ -419,10 +415,8 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
     // ROS_INFO("get point cloud at time: %.6f and size: %d", msg->header.stamp.toSec() - 0.1, ptr->points.size());
     printf("[ INFO ]: get point cloud at time: %.6f and size: %d.\n", msg->header.stamp.toSec(), int(ptr->points.size()));
     lidar_buffer.push_back(ptr);
-    // time_buffer.push_back(msg->header.stamp.toSec() - 0.1);
-    // last_timestamp_lidar = msg->header.stamp.toSec() - 0.1;
-    time_buffer.push_back(msg->header.stamp.toSec());
-    last_timestamp_lidar = msg->header.stamp.toSec();
+    // time_buffer.push_back(msg-
+      const cv::Mat& cur_img,eader.stamp.toSec();
     mtx_buffer.unlock();
     sig_buffer.notify_all();
 }
@@ -476,29 +470,31 @@ cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr& img_msg) {
   return img;
 }
 
-void img_cbk(const sensor_msgs::ImageConstPtr& msg)
+void img_cbk(const sensor_msgs::ImageConstPtr& msg, int cam_id) 
 {
-    if (!img_en) 
+    if (!img_en) return;
+
+    double msg_header_time = msg->header.stamp.toSec() + delta_time;
+
+    // 时间回退检查
+    if (msg_header_time < last_timestamp_imgs[cam_id])
     {
+        ROS_ERROR("img loop back for cam %d, clear buffer", cam_id);
+        mtx_buffer.lock();
+        img_buffers[cam_id].clear();
+        img_time_buffers[cam_id].clear();
+        mtx_buffer.unlock();
         return;
     }
-    double msg_header_time = msg->header.stamp.toSec() + delta_time;
-    printf("[ INFO ]: get img at time: %.6f.\n", msg_header_time);
-    if (msg_header_time < last_timestamp_img)
-    {
-        ROS_ERROR("img loop back, clear buffer");
-        img_buffer.clear();
-        img_time_buffer.clear();
-    }
+
     mtx_buffer.lock();
-
-    img_buffer.push_back(getImageFromMsg(msg));
-    img_time_buffer.push_back(msg_header_time);
-    last_timestamp_img = msg_header_time;
-
+    img_buffers[cam_id].push_back(cv_bridge::toCvCopy(msg, "bgr8")->image);
+    img_time_buffers[cam_id].push_back(msg_header_time);
+    last_timestamp_imgs[cam_id] = msg_header_time;
     mtx_buffer.unlock();
     sig_buffer.notify_all();
 }
+
 
 bool sync_packages(LidarMeasureGroup &meas)
 {
@@ -620,56 +616,6 @@ bool sync_packages(LidarMeasureGroup &meas)
     }
     // ROS_ERROR("out sync");
     return true;
-    // if (lidar_buffer.empty() || imu_buffer.empty()) {
-    //     return false;
-    // }
-
-    // /*** push a lidar scan ***/
-    // if(!lidar_pushed)
-    // {
-    //     meas.lidar = lidar_buffer.front();
-    //     if(meas.lidar->points.size() <= 1)
-    //     {
-    //         lidar_buffer.pop_front();
-    //         return false;
-    //     }
-    //     meas.lidar_beg_time = time_buffer.front();
-    //     lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
-    //     lidar_pushed = true;
-    // }
-
-    // if (last_timestamp_imu < lidar_end_time)
-    // {
-    //     return false;
-    // }
-
-    // /*** push imu data, and pop from imu buffer ***/
-    // double imu_time = imu_buffer.front()->header.stamp.toSec();
-    // meas.imu.clear();
-    // while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
-    // {
-    //     imu_time = imu_buffer.front()->header.stamp.toSec();
-    //     if(imu_time > lidar_end_time + 0.02) break;
-    //     meas.imu.push_back(imu_buffer.front());
-    //     imu_buffer.pop_front();
-    // }
-    // meas.img.clear();
-    // cout<<"lidar_end_time"<<setprecision(15)<<lidar_end_time<<endl;
-    // cout<<"meas.lidar_beg_time:"<<meas.lidar_beg_time<<endl;
-    // double img_time = img_buffer.front()->header.stamp.toSec();
-    // while ((!img_buffer.empty()) && (img_time < lidar_end_time))
-    // {
-    //     img_time = img_buffer.front()->header.stamp.toSec();
-    //     cout<<"img_buffer.size():"<<img_buffer.size()<<endl;
-    //     cout<<"img_time:"<<setprecision(15)<<img_time<<endl;
-    //     if(img_time > lidar_end_time + 0.02) break;
-    //     meas.img.push_back(img_buffer.front());
-    //     img_buffer.pop_front();
-    // }
-    // cout<<"meas.img.size():"<<meas.img.size()<<endl;
-    // lidar_buffer.pop_front();
-    // time_buffer.pop_front();
-    // lidar_pushed = false;
 }
 
 void map_incremental()
@@ -692,14 +638,13 @@ void map_incremental()
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI());
 void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes, 
                              lidar_selection::LidarSelectorPtr lidar_selector, 
-                             const std::vector<CameraInfo> &cameras_info)
+                             const std::vector<Cameras> &cameras)
 {
     uint size = pcl_wait_pub->points.size();
-    PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB());
-    
+    PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB(size, 1));
     if(img_en)
     {
-        laserCloudWorldRGB->reserve(size);
+        laserCloudWorldRGB->clear();
         
         for (int i = 0; i < size; i++)
         {
@@ -712,6 +657,7 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes,
             // 遍历所有相机，获取颜色信息
             for(int cam_idx = 0; cam_idx < lidar_selector->cams.size(); cam_idx++){
                 vk::AbstractCamera* cam = lidar_selector->cams[cam_idx];
+                
                 V3D pf = cam->w2f(p_w); // 世界坐标转换到相机坐标
                 if (pf[2] < 0) continue; // 点在相机后方
                 V2D pc = cam->w2c(p_w); // 世界坐标转换到像素坐标
@@ -723,13 +669,11 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes,
                 if (cam->isInFrame(pc.cast<int>(), 0))
                 {
                     // 获取对应相机的图像
-                    // 假设 lidar_selector 类中有一个方法或成员存储每个相机的图像
-                    // 例如：std::vector<cv::Mat> imgs_cp_;
-                    if(cam_idx >= lidar_selector->imgs_cp_.size()){
+                    if(cam_idx >= lidar_selector->imgs_rgb.size()){
                         ROS_WARN("No image available for cam_idx %d", cam_idx);
                         continue;
                     }
-                    cv::Mat img = lidar_selector->imgs_cp_[cam_idx];
+                    cv::Mat img = lidar_selector->imgs_rgb[cam_idx];
                     
                     V3F pixel = lidar_selector->getpixel(img, pc, cam_idx, width, height);
                     pointRGB.r = pixel[2];
@@ -751,7 +695,7 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes,
         pubLaserCloudFullRes.publish(laserCloudmsg);
     }
     
-    // 保存点云到 PCD 文件（如果启用）
+    // 保存点云到 PCD 
     if (pcd_save_en) {
         *pcl_wait_save += *laserCloudWorldRGB;
     }
@@ -760,24 +704,8 @@ void publish_frame_world_rgb(const ros::Publisher & pubLaserCloudFullRes,
 
 void publish_frame_world(const ros::Publisher & pubLaserCloudFullRes)
 {
-    // PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? feats_undistort : feats_down_body);
-    // int size = laserCloudFullRes->points.size();
-    // if(size==0) return;
-    // PointCloudXYZI::Ptr laserCloudWorld( new PointCloudXYZI(size, 1));
-
-    // for (int i = 0; i < size; i++)
-    // {
-    //     RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
-    //                         &laserCloudWorld->points[i]);
-    // }
     uint size = pcl_wait_pub->points.size();
-    // PointCloudXYZ::Ptr laserCloudWorld(new PointCloudXYZ(size, 1));
-    // else
-    // {
-    //*pcl_wait_pub = *laserCloudWorld;
-    // }
-    // mtx_buffer_pointcloud.lock();
-    if (1)//if(publish_count >= PUBFRAME_PERIOD)
+    if (1)
     {
         sensor_msgs::PointCloud2 laserCloudmsg;
 
@@ -899,25 +827,6 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
     odomAftMapped.child_frame_id = "aft_mapped";
     odomAftMapped.header.stamp = ros::Time::now();//.ros::Time()fromSec(last_timestamp_lidar);
     set_posestamp(odomAftMapped.pose.pose);
-    // odomAftMapped.twist.twist.linear.x = state_point.vel(0);
-// odomAftMapped.twist.twist.linear.y = state_point.vel(1);
-// odomAftMapped.twist.twist.linear.z = state_point.vel(2);
-// if (Measures.imu.size()>0) {
-//     Vector3d tmp(Measures.imu.back()->angular_velocity.x, Measures.imu.back()->angular_velocity.y,Measures.imu.back()->angular_velocity.z);
-//     odomAftMapped.twist.twist.angular.x = tmp[0] - state_point.bg(0);
-//     odomAftMapped.twist.twist.angular.y = tmp[1] - state_point.bg(1);
-//     odomAftMapped.twist.twist.angular.z = tmp[2] - state_point.bg(2);
-// }
-    // static tf::TransformBroadcaster br;
-    // tf::Transform                   transform;
-    // tf::Quaternion                  q;
-    // transform.setOrigin(tf::Vector3(state.pos_end(0), state.pos_end(1), state.pos_end(2)));
-    // q.setW(geoQuat.w);
-    // q.setX(geoQuat.x);
-    // q.setY(geoQuat.y);
-    // q.setZ(geoQuat.z);
-    // transform.setRotation( q );
-    // br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "aft_mapped" ) );
     pubOdomAftMapped.publish(odomAftMapped);
 }
 
@@ -1074,9 +983,9 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 }
 #endif         
 
-void readParameters(ros::NodeHandle &nh, std::vector<CameraInfo> &cameras)
+void readParameters(ros::NodeHandle &nh, std::vector<Cameras> &cameras)
 {
-    // 读取相机列表
+    // 读取相机列表CamInfo初始化
     XmlRpc::XmlRpcValue cameras_param;
     nh.getParam("cameras", cameras_param);
     
@@ -1098,7 +1007,7 @@ void readParameters(ros::NodeHandle &nh, std::vector<CameraInfo> &cameras)
         }
     }
     
-    // 读取 pinhole 相机内参
+    // pinhole 相机
     XmlRpc::XmlRpcValue pinhole_cams_param;
     nh.getParam("camera_pinhole2/cameras", pinhole_cams_param);
     
@@ -1127,7 +1036,7 @@ void readParameters(ros::NodeHandle &nh, std::vector<CameraInfo> &cameras)
         }
     }
     
-    // 读取其他参数（保持不变）
+    // 读取其他参数
     nh.param<int>("dense_map_enable", dense_map_en, 1);
     nh.param<int>("img_enable", img_en, 1);
     nh.param<int>("lidar_enable", lidar_en, 1);
@@ -1170,37 +1079,40 @@ int main(int argc, char** argv)
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
 
-    std::vector<CameraInfo> cameras_info;//相机列表
-    readParameters(nh,cameras_info);
-
+    std::vector<Cameras> cameras_info;//相机列表
+    readParameters(nh,cameras_info);//已经将相机参数保存到camers_info
     //检查
     if (cameras_info.empty()) {
         ROS_ERROR("No cameras loaded. Exiting.");
         return -1;
     }
-    // 初始化相机对象
-     // 初始化相机对象
-    std::vector<vk::AbstractCamera*> cameras;
-    for(auto &cam_info : cameras_info){
-        PinholeCamera* cam_ptr = new PinholeCamera(
-            cam_info.cam_width, cam_info.cam_height, cam_info.cam_fx, 
-            cam_info.cam_fy, cam_info.cam_cx, cam_info.cam_cy
-        );
-        // 设置外参
-        cam_ptr->setExtrinsic(cam_info.Rcl, cam_info.Pcl); // 假设有 setExtrinsic 方法
-        cam_ptr->setCamID(cam_info.cam_id); // 假设有 setCamID 方法
-        cam_ptr->setImgTopic(cam_info.img_topic); // 假设有 setImgTopic 方法
-        cameras.emplace_back(cam_ptr);
-    }
-     // 初始化 LidarSelector
+     // 初始化 LidarSelector 相机信息应该初始化到lidar_selector
     lidar_selection::LidarSelectorPtr lidar_selector(new lidar_selection::LidarSelector());
-    
+    int num_cameras = cameras_info.size();
+    img_buffers.resize(num_cameras);
+    img_time_buffers.resize(num_cameras);
+    last_timestamp_imgs.resize(num_cameras, -1.0);
+    // 订阅每个相机的图像话题
+    // 定义一个容器来存储订阅器，以保持它们的生命周期
+    std::vector<ros::Subscriber> img_subs;
+    img_subs.reserve(num_cameras); // 预留空间
+    for(int i = 0; i < num_cameras; i++) {
+        // subscribe只可以传递一个参数给imgcbk 使用 C++11 lambda 表达式绑定 cam_id
+        ros::Subscriber sub_img = nh.subscribe<cameras_info[i].img_topic, 
+                                                sensor_msgs::Image, 
+                                                std::function<void(const sensor_msgs::ImageConstPtr&)>>
+                                (cameras_info[i].img_topic, 
+                                 200000, 
+                                 [i](const sensor_msgs::ImageConstPtr& msg) {
+                                     img_cbk(msg, i);
+                                 });
+        img_subs.emplace_back(sub_img);
+    }
     pcl_wait_pub->clear();
     ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
         nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
         nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
     ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
-    ros::Subscriber sub_img = nh.subscribe(img_topic, 200000, img_cbk);
     image_transport::Publisher img_pub = it.advertise("/rgb_img", 1);
     ros::Publisher pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_registered", 100);
@@ -1382,18 +1294,6 @@ int main(int argc, char** argv)
                 euler_cur = RotMtoEuler(state.rot_end);
                 fout_pre << setw(20) << LidarMeasures.last_update_time - first_lidar_time << " " << euler_cur.transpose()*57.3 << " " << state.pos_end.transpose() << " " << state.vel_end.transpose() \
                                 <<" "<<state.bias_g.transpose()<<" "<<state.bias_a.transpose()<<" "<<state.gravity.transpose()<< endl;
-                
-                // lidar_selector->detect(LidarMeasures.measures.back().img, feats_undistort);
-                // mtx_buffer_pointcloud.lock();
-                
-                // int size = feats_undistort->points.size();
-                // cout<<"size1111111111111111: "<<size<<endl;
-                // PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
-                // for (int i = 0; i < size; i++)
-                // {
-                //     pointBodyToWorld(&feats_undistort->points[i], \
-                //                         &laserCloudWorld->points[i]);
-                // }
 
                 lidar_selector->detect(LidarMeasures.measures.back().img, pcl_wait_pub);
                 // int size = lidar_selector->map_cur_frame_.size();
@@ -1401,15 +1301,7 @@ int main(int argc, char** argv)
                 
                 // map_cur_frame_point->clear();
                 sub_map_cur_frame_point->clear();
-                // for(int i=0; i<size; i++)
-                // {
-                //     PointType temp_map;
-                //     temp_map.x = lidar_selector->map_cur_frame_[i]->pos_[0];
-                //     temp_map.y = lidar_selector->map_cur_frame_[i]->pos_[1];
-                //     temp_map.z = lidar_selector->map_cur_frame_[i]->pos_[2];
-                //     temp_map.intensity = 0.;
-                //     map_cur_frame_point->push_back(temp_map);
-                // }
+                
                 for(int i=0; i<size_sub; i++)
                 {
                     PointType temp_map;
@@ -1427,13 +1319,8 @@ int main(int argc, char** argv)
                 out_msg.image = img_rgb;
                 img_pub.publish(out_msg.toImageMsg());
 
-                if(img_en) publish_frame_world_rgb(pubLaserCloudFullRes, lidar_selector);
+                if(img_en) publish_frame_world_rgb(pubLaserCloudFullRes, lidar_selector,cameras_info);
                 publish_visual_world_sub_map(pubSubVisualCloud);
-                
-                // *map_cur_frame_point = *pcl_wait_pub;
-                // mtx_buffer_pointcloud.unlock();
-                // lidar_selector->detect(LidarMeasures.measures.back().img, feats_down_world);
-                // p_imu->push_update_state(LidarMeasures.measures.back().img_offset_time, state);
                 geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur(0), euler_cur(1), euler_cur(2));
                 publish_odometry(pubOdomAftMapped);
                 euler_cur = RotMtoEuler(state.rot_end);
@@ -1869,23 +1756,7 @@ int main(int argc, char** argv)
         }
         // dump_lio_state_to_log(fp);
     }
-    //--------------------------save map---------------
-    // string surf_filename(map_file_path + "/surf.pcd");
-    // string corner_filename(map_file_path + "/corner.pcd");
-    // string all_points_filename(map_file_path + "/all_points.pcd");
-
-    // PointCloudXYZI surf_points, corner_points;
-    // surf_points = *featsFromMap;
-    // fout_out.close();
-    // fout_pre.close();
-    // if (surf_points.size() > 0 && corner_points.size() > 0) 
-    // {
-    // pcl::PCDWriter pcd_writer;
-    // cout << "saving...";
-    // pcd_writer.writeBinary(surf_filename, surf_points);
-    // pcd_writer.writeBinary(corner_filename, corner_points);
-    // }
-
+    
          /**************** save map ****************/
     /* 1. make sure you have enough memories
     /* 2. pcd save will largely influence the real-time performences **/

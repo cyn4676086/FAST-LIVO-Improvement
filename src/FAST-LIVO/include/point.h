@@ -21,7 +21,7 @@
 #include <common_lib.h>
 #include <feature.h>
 #include <frame.h>
-#include <mutex> // 添加此行
+#include <mutex>
 
 
 namespace lidar_selection {
@@ -58,6 +58,9 @@ public:
   int                         last_structure_optim_;    //!< Timestamp of last point optimization
   bool                        have_scaled;
   float                       value;
+  mutable std::mutex mutex_; // 添加 mutex_
+
+
   Point(const Vector3d& pos);
   Point(const Vector3d& pos, FeaturePtr ftr);
   ~Point();
@@ -84,15 +87,11 @@ public:
 
   bool getCloseViewObs_test(const Vector3d& pos, FeaturePtr& obs, const Vector2d& cur_px, double& min_cos_angle) const;
 
-  /// Get number of observations.
-  inline size_t nRefs() const { return obs_.size(); }
-
   /// Optimize point position through minimizing the reprojection error.
   void optimize(const size_t n_iter);
 
   // 获取观测数量。
   inline size_t nRefs() const { 
-      std::lock_guard<std::mutex> lock(mutex_);
       return obs_.size(); 
   }
   

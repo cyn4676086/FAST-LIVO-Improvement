@@ -27,13 +27,13 @@ struct Feature
     Eigen::Vector2d px;          //!< Coordinates in pixels on pyramid level 0.
     Eigen::Vector3d f;           //!< Unit-bearing vector of the feature.
     int level;            //!< Image pyramid level where feature was extracted.
-    std::shared_ptr<MapPoint> point;       //!< Pointer to 3D point which corresponds to the feature.
+    PointPtr point;         //!< Pointer to 3D point which corresponds to the feature.
     Eigen::Vector2d grad;        //!< Dominant gradient direction for edgelets, normalized.
     float score;
     float error;
     SE3 T_f_w_;
     
-    int camera_id;        //!< ID of the camera from which this feature was extracted (newly added)
+    int camera_id;        //!< 新增
 
     Feature(const Eigen::Vector2d& _px, 
             const Eigen::Vector3d& _f, 

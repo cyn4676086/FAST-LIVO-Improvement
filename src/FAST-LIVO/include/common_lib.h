@@ -1,3 +1,5 @@
+//common_lib.h
+
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
 
@@ -199,12 +201,10 @@ struct SparseMap
     vector<float*> patch;
     vector<float> values;
     vector<cv::Mat> imgs; 
-    vector<M3D> R_ref;   // 存储每个相机的旋转矩阵
-    vector<V3D> P_ref;   // 存储每个相机的平移向量
     vector<V3D> xyz_ref;
     vector<V2D> px;
-    M3D Rcl;             // LiDAR 到 IMU 的旋转
-    V3D Pcl;             // LiDAR 到 IMU 的平移
+    M3D Rcl;
+    V3D Pcl;
 
     SparseMap()
     {
@@ -212,36 +212,13 @@ struct SparseMap
         this->patch.clear();
         this->values.clear();
         this->imgs.clear();
-        this->R_ref.clear();
-        this->P_ref.clear();
         this->px.clear();
         this->xyz_ref.clear();
         this->Rcl = M3D::Identity();
         this->Pcl = Zero3d;
     };
 
-    // 修改后的 set_camera2lidar 方法，支持多个相机
-    void set_camera2lidar(const std::vector<double>& R, const std::vector<double>& P)
-    {
-        size_t num_cameras = R.size() / 9; // 每个旋转矩阵包含 9 个元素
-        size_t num_trans = P.size() / 3;    // 每个平移向量包含 3 个元素
-
-        if (num_cameras != num_trans) {
-            throw std::runtime_error("相机数量与外参数据不匹配。");
-        }
-
-        // 调整 R_ref 和 P_ref 的大小
-        R_ref.resize(num_cameras);
-        P_ref.resize(num_cameras);
-
-        for (size_t i = 0; i < num_cameras; ++i) {
-            // 使用 Eigen::Map 直接从 vector<double> 赋值
-            Eigen::Map<const M3D> rot_map(R.data() + i * 9);
-            Eigen::Map<const V3D> transl_map(P.data() + i * 3);
-            R_ref[i] = rot_map;
-            P_ref[i] = transl_map;
-        }
-    }
+    
 
     void reset()
     {
@@ -249,8 +226,6 @@ struct SparseMap
         this->patch.clear();
         this->values.clear();
         this->imgs.clear();
-        this->R_ref.clear();
-        this->P_ref.clear();
         this->px.clear();
         this->xyz_ref.clear();
     }
