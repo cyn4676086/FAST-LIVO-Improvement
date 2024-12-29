@@ -38,6 +38,7 @@ public:
     Features                      fts_;                   //!< List of features in the images.
     std::vector<FeaturePtr>        key_pts_;               //!< 关键帧 重叠视野检查 5个位置快速检查 camid*5偏移量
     bool                          is_keyframe_;           //!< Was this frame selected as keyframe
+    
 
     /// Constructor accepting multiple cameras and their corresponding images
     Frame(const std::vector<vk::AbstractCamera*>& cams, const std::vector<cv::Mat>& imgs);
@@ -80,29 +81,31 @@ public:
     /// Was this frame selected as keyframe?
     inline bool isKeyframe() const { return is_keyframe_; }
 
+    inline size_t getCameraCount() const {
+        return cams_.size();
+    }
 
+    inline int getId() const {
+        return id_;
+    }
     /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f) for a specific camera.
     inline Vector3d c2f(const Vector2d& px, size_t cam_id) const { return cams_[cam_id]->cam2world(px[0], px[1]); }
 
     /// Transforms pixel coordinates (c) to frame unit sphere coordinates (f) for a specific camera.
     inline Vector3d c2f(const double x, const double y, size_t cam_id) const { return cams_[cam_id]->cam2world(x, y); }
 
-    inline Vector3d w2f(const Vector3d& xyz_w, size_t cam_id) const {
-        Vector3d xyz_in_frame = T_f_w_ * xyz_w; // Frame参考坐标系（如IMU系下）
-        Vector3d xyz_in_cam = Rci_list[cam_id] * xyz_in_frame + Pci_list[cam_id];
-        return xyz_in_cam;
-    }
-
-    inline Vector2d w2c(const Vector3d& xyz_w, size_t cam_id) const {
-        Vector3d xyz_in_cam = w2f(xyz_w, cam_id);
-        return cams_[cam_id]->world2cam(xyz_in_cam);
-    }
-
     /// Transforms point from frame unit sphere (f) in camera to world coordinate frame (w).
-    inline Vector3d f2w(const Vector3d& xyz_w, size_t cam_id) const { return T_f_w_.inverse() * xyz_w; }
+    inline Vector3d f2w(const Vector3d& xyz_f) const { return T_f_w_.inverse() * xyz_f; }
 
     /// Projects Point from unit sphere (f) in camera pixels (c) for a specific camera.
     inline Vector2d f2c(const Vector3d& f, size_t cam_id) const { return cams_[cam_id]->world2cam(f); }
+
+    /// Transforms point coordinates in world-frame (w) to camera-frame (f) for a specific camera.
+    inline Vector3d w2f(const Vector3d& xyz_w) const { return T_f_w_ * xyz_w; }
+
+    /// Transforms point coordinates in world-frame (w) to camera pixel coordinates (c) for a specific camera.
+    inline Vector2d w2c(const Vector3d& xyz_w, size_t cam_id) const { return cams_[cam_id]->world2cam(T_f_w_ * xyz_w); }
+
     
     /// Return the position of the frame in the (w)orld coordinate frame.
     inline Vector3d pos() const { return T_f_w_.inverse().translation(); }
@@ -193,7 +196,16 @@ public:
 };
 
 typedef std::shared_ptr<Frame> FramePtr;
+/// Some helper functions for the frame object.
+namespace frame_utils {
 
+/// Creates an image pyramid of half-sampled images.
+void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr);
+
+/// Get the average depth of the features in the image.
+bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min);
+
+} // namespace frame_utils
 } // namespace lidar_selection
 
 #endif // SVO_FRAME_H_

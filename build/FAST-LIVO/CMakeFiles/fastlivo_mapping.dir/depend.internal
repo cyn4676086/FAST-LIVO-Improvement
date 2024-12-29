@@ -612,6 +612,7 @@ FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/IKFoM_toolkit/mtk/types/SOn.hpp
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/IKFoM_toolkit/mtk/types/vect.hpp
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/IMU_Processing.h
+ /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/common_lib.h
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/feature.h
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/frame.h

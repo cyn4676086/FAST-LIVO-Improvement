@@ -1,3 +1,4 @@
+//lidar_selection.h
 #ifndef LIDAR_SELECTION_H_
 #define LIDAR_SELECTION_H_
 
@@ -16,6 +17,8 @@
 #include <set>
 #include <vector>
 #include <memory>
+#include "camera_manager.h"
+
 
 namespace lidar_selection {
 
@@ -89,29 +92,26 @@ class LidarSelector {
     cv::flann::Index Kdtree;
 
      // 构造函数：接受网格大小、稀疏地图指针和多个相机指针
-    LidarSelector(const int grid_size, SparseMap* sparse_map, const std::vector<vk::AbstractCamera*>& camera_ptrs);
+    LidarSelector(int gridsize, SparseMap* sparsemap, std::vector<camera_manager::Cameras> &cameras_info);
 
     ~LidarSelector();
 
     // 修改后的函数以处理多个相机
     void detect(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg);
-    float CheckGoodPoints(cv::Mat img, V2D uv);
-    void addFromSparseMap(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg);
-    void addSparseMap(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg);
-    void FeatureAlignment(const std::vector<cv::Mat>& imgs);
+    float CheckGoodPoints(const cv::Mat & img, const Eigen::Vector2d & uv, int cam_id);
+    void addFromSparseMap(const std::vector<cv::Mat>& imgs,PointCloudXYZI::Ptr pg);
+    void addSparseMap(const cv::Mat& img,PointCloudXYZI::Ptr pg, int cam_id);
+    void FeatureAlignment(cv::Mat img);
     void set_extrinsic(const V3D &transl, const M3D &rot); // 不作修改
-    void set_camera2lidar(const std::vector<double>& R, const std::vector<double>& P)
     void init();
-    void getpatch(cv::Mat img, V3D pg, float* patch_tmp, int level);
-    void dpi(V3D p, MD(2,3)& J);
+    void getpatch(const cv::Mat & img, const Eigen::Vector2d & pc, float * patch_tmp, int level, int cam_id);
+    void dpi(const V3D& p, MD(2,3)& J, double fx, double fy);
     float UpdateState(const std::vector<cv::Mat>& imgs, float total_residual, int level);
     double NCC(float* ref_patch, float* cur_patch, int patch_size);
 
     void ComputeJ(const std::vector<cv::Mat>& imgs);
     void reset_grid();
     void addObservation(const std::vector<cv::Mat>& imgs);
-    void reset();
-    bool initialization(FramePtr cur_frame, PointCloudXYZI::Ptr pg);   
     void createPatchFromPatchWithBorder(float* patch_with_border, float* patch_ref);
     void getWarpMatrixAffine(
       const vk::AbstractCamera& cam,
@@ -133,8 +133,8 @@ class LidarSelector {
     void AddPoint(PointPtr pt_new);
     int getBestSearchLevel(const Matrix2d& A_cur_ref, const int max_level);
     void display_keypatch(double time);
-    void updateFrameState(StatesGroup state);
-    V3F getpixel(cv::Mat img, V2D pc);
+    void updateFrameState(const StatesGroup & state);
+    V3F getpixel(const cv::Mat & img, const Eigen::Vector2d & pc, int cam_id);
 
     void warpAffine(
       const Matrix2d& A_cur_ref,
@@ -144,22 +144,23 @@ class LidarSelector {
       const int search_level,
       const int pyramid_level,
       const int halfpatch_size,
-      float* patch);
+      float* patch,int cam_id);
     
     PointCloudXYZI::Ptr Map_points;
     PointCloudXYZI::Ptr Map_points_output;
     PointCloudXYZI::Ptr pg_down;
     pcl::VoxelGrid<PointType> downSizeFilter;
-    std::unordered_map<VOXEL_KEY, VOXEL_POINTS*, VOXEL_KEY_Hash> feat_map;
-    std::unordered_map<VOXEL_KEY, float, VOXEL_KEY_Hash> sub_feat_map; // timestamp
+    std::unordered_map<VOXEL_KEY, VOXEL_POINTS*> feat_map;
+    std::unordered_map<VOXEL_KEY, float> sub_feat_map; // timestamp
     std::unordered_map<int, Warp*> Warp_map; // reference frame id, A_cur_ref and search_level
+
 
     std::vector<VOXEL_KEY> occupy_postions;
     std::set<VOXEL_KEY> sub_postion;
     std::vector<PointPtr> voxel_points_;
     std::vector<V3D> add_voxel_points_;
 
-    cv::Mat img_cp, img_rgb;//还需修改
+    cv::Mat img_cp, img_rgb;
     std::vector<FramePtr> overlap_kfs_;
     FramePtr new_frame_;
     FramePtr last_kf_;

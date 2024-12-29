@@ -192,6 +192,14 @@ geometry_msgs/Vector3.h
 use-ikfom.hpp
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/use-ikfom.hpp
 
+/home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
+string
+-
+Eigen/Core
+-
+vikit/abstract_camera.h
+-
+
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/common_lib.h
 so3_math.h
 -
@@ -215,8 +223,6 @@ tf/transform_broadcaster.h
 -
 eigen_conversions/eigen_msg.h
 -
-cv_bridge/cv_bridge.h
--
 opencv2/opencv.hpp
 -
 sophus/se3.h
@@ -233,6 +239,10 @@ point.h
 -
 common_lib.h
 -
+Eigen/Core
+-
+opencv2/opencv.hpp
+-
 
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/frame.h
 common_lib.h
@@ -242,6 +252,14 @@ vikit/math_utils.h
 vikit/abstract_camera.h
 -
 boost/noncopyable.hpp
+-
+vector
+-
+memory
+-
+list
+-
+opencv2/opencv.hpp
 -
 
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/ikd-Tree/ikd_Tree.h
@@ -289,6 +307,12 @@ pcl/filters/voxel_grid.h
 -
 set
 -
+vector
+-
+memory
+-
+camera_manager.h
+/home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
 
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/map.h
 queue
@@ -310,6 +334,8 @@ common_lib.h
 feature.h
 -
 frame.h
+-
+mutex
 -
 
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/preprocess.h
@@ -397,6 +423,8 @@ vikit/camera_loader.h
 -
 lidar_selection.h
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/lidar_selection.h
+camera_manager.h
+/home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/camera_manager.h
 ikd-Forest/ikd_Forest.h
 -
 ikd-Tree/ikd_Tree.h

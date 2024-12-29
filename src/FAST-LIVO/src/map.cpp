@@ -245,33 +245,22 @@ bool Map::getKeyframeById(const int id, FramePtr& frame) const
 
 void Map::transform(const Matrix3d& R, const Vector3d& t, const double& s)
 {
-    std::lock_guard<std::mutex> lock(map_mutex_);
-    for(auto& kf : keyframes_)
+  for(auto it=keyframes_.begin(), ite=keyframes_.end(); it!=ite; ++it)
+  {
+    Vector3d pos = s*R*(*it)->pos() + t;
+    Matrix3d rot = R*(*it)->T_f_w_.rotation_matrix().inverse();
+    (*it)->T_f_w_ = SE3(rot, pos).inverse();
+    for(auto ftr=(*it)->fts_.begin(); ftr!=(*it)->fts_.end(); ++ftr)
     {
-        // 变换关键帧的位置和姿态
-        Vector3d pos = s * R * kf->pos() + t;
-        Matrix3d rot = R * kf->getRotationMatrix().inverse();
-        kf->setPose(SE3(rot, pos).inverse());
-
-        // 变换关键帧中的地图点
-        for(auto& ftr : kf->getFeatures())
-        {
-            if(ftr->point == nullptr)
-                continue;
-            if(ftr->point->last_published_ts_ == -1000)
-                continue;
-            ftr->point->last_published_ts_ = -1000;
-            Vector3d new_pos = s * R * ftr->point->pos_ + t;
-            ftr->point->setPosition(new_pos);
-        }
+      if((*ftr)->point == nullptr)
+        continue;
+      if((*ftr)->point->last_published_ts_ == -1000)
+        continue;
+      (*ftr)->point->last_published_ts_ = -1000;
+      (*ftr)->point->pos_ = s*R*(*ftr)->point->pos_ + t;
     }
-
-    // 变换所有地图点的位置
-    for(auto& pt : map_points_)
-    {
-        pt->transform(R, t, s);
-    }
-}
+  }
+} 
 
 void Map::emptyTrash()
 {

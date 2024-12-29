@@ -228,4 +228,45 @@ bool Frame::isVisibleInCam(const Eigen::Vector3d& xyz_w, int cam_id) const
     return (px[0] >= 0.0 && px[1] >= 0.0 && px[0] < cams_[cam_id]->width() && px[1] < cams_[cam_id]->height());
 }
 
+/// Utility functions for the Frame class
+namespace frame_utils {
+
+void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr)
+{
+  pyr.resize(n_levels);
+  pyr[0] = img_level_0;
+
+  for(int i=1; i<n_levels; ++i)
+  {
+    pyr[i] = cv::Mat(pyr[i-1].rows/2, pyr[i-1].cols/2, CV_8U);
+    vk::halfSample(pyr[i-1], pyr[i]);
+  }
+}
+
+
+bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
+{
+  vector<double> depth_vec;
+  depth_vec.reserve(frame.fts_.size());
+  depth_min = std::numeric_limits<double>::max(); 
+  for(auto it=frame.fts_.begin(), ite=frame.fts_.end(); it!=ite; ++it)
+  {
+    if((*it)->point != nullptr) 
+    {
+      const double z = frame.w2f((*it)->point->pos_).z();
+      depth_vec.push_back(z);
+      depth_min = fmin(z, depth_min);
+    }
+  }
+  if(depth_vec.empty())
+  {
+    cout<<"Cannot set scene depth. Frame has no point-observations!"<<endl;
+    return false;
+  }
+  depth_mean = vk::getMedian(depth_vec);
+  return true;
+}
+
+} // namespace frame_utils
+
 } // namespace lidar_selection

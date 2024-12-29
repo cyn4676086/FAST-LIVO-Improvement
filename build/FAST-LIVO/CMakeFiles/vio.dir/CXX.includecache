@@ -40,6 +40,14 @@ ros/message_operations.h
 std_msgs/Header.h
 -
 
+/home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
+string
+-
+Eigen/Core
+-
+vikit/abstract_camera.h
+-
+
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/common_lib.h
 so3_math.h
 -
@@ -133,6 +141,8 @@ vector
 -
 memory
 -
+camera_manager.h
+/home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
 
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/map.h
 queue
@@ -189,6 +199,12 @@ iostream
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/lidar_selection.cpp
 lidar_selection.h
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/lidar_selection.h
+camera_manager.h
+/home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/camera_manager.h
+iterator
+-
+vector
+-
 
 /home/elon/ws_FAST-LIVO/src/FAST-LIVO/src/map.cpp
 set

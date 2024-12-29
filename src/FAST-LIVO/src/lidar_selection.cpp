@@ -1,8 +1,10 @@
 #include "lidar_selection.h"
-
+#include "camera_manager.h"
+#include <iterator>
+#include <vector>
 namespace lidar_selection {
 
-LidarSelector::LidarSelector(const int gridsize, SparseMap* sparsemap, const std::vector<Cameras>& cameras_info)
+LidarSelector::LidarSelector(int gridsize, SparseMap* sparsemap, std::vector<camera_manager::Cameras> &cameras_info)
     : grid_size(gridsize), sparse_map(sparsemap), state(nullptr), state_propagat(nullptr),
       Rli(M3D::Identity()), Pli(V3D::Zero()),
       sub_sparse_map(nullptr),
@@ -13,6 +15,8 @@ LidarSelector::LidarSelector(const int gridsize, SparseMap* sparsemap, const std
       ave_total(0.0), frame_count(0),
       scale_estimator_(nullptr)
 {
+    
+   
     downSizeFilter.setLeafSize(0.2f, 0.2f, 0.2f);
     G = Matrix<double, DIM_STATE, DIM_STATE>::Zero();
     H_T_H = Matrix<double, DIM_STATE, DIM_STATE>::Zero();
@@ -39,14 +43,14 @@ LidarSelector::LidarSelector(const int gridsize, SparseMap* sparsemap, const std
 
         cam_info.Rci = cam_info.Rcl * Rli;
         cam_info.Pci = cam_info.Rcl * Pli + cam_info.Pcl;
-        cam_info.Rcw = cam_info.Rcl * Rli.transpose(); 
-        cam_info.Pcw = cam_info.Rcl * Rli.transpose() * Pli + cam_info.Pci; 
+        //初始化为0 在状态更新中计算
+        cam_info.Rcw = M3D::Identity();
+        cam_info.Pcw = V3D::Zero();
 
         // 雅可比矩阵
         cam_info.Jdphi_dR = cam_info.Rci;
-        cam_info.Jdp_dR = -cam_info.Rci * SKEW_SYM_MATRX(cam_info.Pci);
-        cam_info.Jdp_dt = cam_info.Rci * Rli.transpose();
-
+        cam_info.Jdp_dR = -cam_info.Rci * (SKEW_SYM_MATRX(-cam_info.Rci.transpose() * cam_info.Pci));
+        cam_info.Jdp_dt = V3D::Identity();
         // 添加到相机列表
         cameras.push_back(cam_info);
     }
@@ -78,9 +82,15 @@ void LidarSelector::init()
     map_index = new int[length];
     map_value = new float[length];
     map_dist = (float*)malloc(sizeof(float)*length);
-    memset(grid_num, TYPE_UNKNOWN, sizeof(int)*length);
-    memset(map_index, 0, sizeof(int)*length);
-    memset(map_value, 0, sizeof(float)*length);
+
+    // 使用 std::fill_n 替代 memset
+    std::fill_n(grid_num, length, TYPE_UNKNOWN);
+    std::fill_n(map_index, length, 0);
+    std::fill_n(map_value, length, 0.0f);
+
+    // memset(grid_num, TYPE_UNKNOWN, sizeof(int)*length);
+    // memset(map_index, 0, sizeof(int)*length);
+    // memset(map_value, 0, sizeof(float)*length);
     voxel_points_.reserve(length);
     add_voxel_points_.reserve(length);
     patch_size_total = patch_size * patch_size;
@@ -96,6 +106,8 @@ void LidarSelector::init()
     scale_estimator_.reset(new vk::robust_cost::UnitScaleEstimator());
     // scale_estimator_.reset(new vk::robust_cost::MADScaleEstimator());
 }
+
+
 //雷达和IMU外参 保持不变
 void LidarSelector::set_extrinsic(const V3D &transl, const M3D &rot)
 {
@@ -103,7 +115,6 @@ void LidarSelector::set_extrinsic(const V3D &transl, const M3D &rot)
     Rli = rot.transpose();
 }
 
-//保持不变
 void LidarSelector::reset_grid()
 {
     memset(grid_num, TYPE_UNKNOWN, sizeof(int)*length);
@@ -115,24 +126,26 @@ void LidarSelector::reset_grid()
     add_voxel_points_.reserve(length);
 }
 
-//保持不变
-void LidarSelector::dpi(V3D p, MD(2,3)& J) {
+void LidarSelector::dpi(const V3D& p, MD(2,3)& J, double fx, double fy) {
     const double x = p[0];
     const double y = p[1];
-    const double z_inv = 1./p[2];
+    const double z_inv = 1.0 / p[2];
     const double z_inv_2 = z_inv * z_inv;
+    
     J(0,0) = fx * z_inv;
     J(0,1) = 0.0;
     J(0,2) = -fx * x * z_inv_2;
+    
     J(1,0) = 0.0;
     J(1,1) = fy * z_inv;
     J(1,2) = -fy * y * z_inv_2;
 }
 
+
 //区分多相机
 float LidarSelector::CheckGoodPoints(const cv::Mat& img, const Eigen::Vector2d& uv, int cam_id)
 {
-    const CameraInfo& cam_info = cameras[cam_id];
+    CameraInfo& cam_info = cameras[cam_id];
     const float u_ref = uv[0];
     const float v_ref = uv[1];
     const int u_ref_i = floorf(u_ref); 
@@ -141,22 +154,26 @@ float LidarSelector::CheckGoodPoints(const cv::Mat& img, const Eigen::Vector2d& 
        v_ref_i < 1 || v_ref_i >= cam_info.height - 1)
         return 0.0f;
 
-    const float subpix_u_ref = u_ref - u_ref_i;
-    const float subpix_v_ref = v_ref - v_ref_i;
-
-    uint8_t* img_ptr = img.data + v_ref_i * cam_info.width + u_ref_i;
-    float gu = 2*(img_ptr[1] - img_ptr[-1]) + img_ptr[1 - cam_info.width] - img_ptr[-1 - cam_info.width] + 
-               img_ptr[1 + cam_info.width] - img_ptr[-1 + cam_info.width];
-    float gv = 2*(img_ptr[cam_info.width] - img_ptr[-cam_info.width]) + 
-               img_ptr[cam_info.width + 1] - img_ptr[-cam_info.width + 1] + 
-               img_ptr[cam_info.width - 1] - img_ptr[-cam_info.width - 1];
+    // 计算梯度
+    float gu = 0.0f;
+    float gv = 0.0f;
+    for(int dy = -1; dy <=1; dy++)
+    {
+        for(int dx = -1; dx <=1; dx++)
+        {
+            if(dy == 0 && dx == 0) continue;
+            gu += (img.at<uint8_t>(v_ref_i + dy, u_ref_i + dx) - img.at<uint8_t>(v_ref_i + dy, u_ref_i - dx)) * (dx != 0 ? 2.0f : 1.0f);
+            gv += (img.at<uint8_t>(v_ref_i + dy, u_ref_i + dx) - img.at<uint8_t>(v_ref_i - dy, u_ref_i + dx)) * (dy != 0 ? 2.0f : 1.0f);
+        }
+    }
     return fabs(gu) + fabs(gv);
 }
 
 
+
 void LidarSelector::getpatch(const cv::Mat& img, const Eigen::Vector2d& pc, float* patch_tmp, int level, int cam_id) 
 {
-    const CameraInfo& cam_info = cameras[cam_id];
+    CameraInfo& cam_info = cameras[cam_id];
     const float u_ref = pc[0];
     const float v_ref = pc[1];
     const int scale =  (1 << level);
@@ -193,16 +210,15 @@ void LidarSelector::getpatch(const cv::Mat& img, const Eigen::Vector2d& pc, floa
 
 
 // 添加稀疏地图
-void LidarSelector::addSparseMap(const cv::Mat& img, pcl::PointCloud<pcl::PointXYZI>::Ptr pg, int cam_id) 
+void LidarSelector::addSparseMap(const cv::Mat& img, PointCloudXYZI::Ptr pg, int cam_id) 
 {
-    const CameraInfo& cam_info = cameras[cam_id];
-    GridData& grid_data = grid_data_list[cam_id];
+    CameraInfo& cam_info = cameras[cam_id];
 
     // 重置网格数据
-    std::fill_n(grid_data.grid_num, grid_n_width * grid_n_height, TYPE_UNKNOWN);
-    std::fill_n(grid_data.map_index, grid_n_width * grid_n_height, 0);
-    std::fill_n(grid_data.map_value, grid_n_width * grid_n_height, 0.0f);
-    std::fill_n(grid_data.map_dist, grid_n_width * grid_n_height, 10000.0f);
+    std::fill_n(grid_num, grid_n_width * grid_n_height, TYPE_UNKNOWN);
+    std::fill_n(map_index, grid_n_width * grid_n_height, 0);
+    std::fill_n(map_value, grid_n_width * grid_n_height, 0.0f);
+    std::fill_n(map_dist, grid_n_width * grid_n_height, 10000.0f);
 
     for (int i = 0; i < pg->size(); i++) 
     {
@@ -213,11 +229,11 @@ void LidarSelector::addSparseMap(const cv::Mat& img, pcl::PointCloud<pcl::PointX
             int index = static_cast<int>(pc[0] / grid_size) * grid_n_height + static_cast<int>(pc[1] / grid_size);
             float cur_value = vk::shiTomasiScore(img, pc[0], pc[1]);
 
-            if (cur_value > grid_data.map_value[index]) // && (grid_num[index] != TYPE_MAP || map_value[index]<=10)) //! only add in not occupied grid
+            if (cur_value > map_value[index]) // && (grid_num[index] != TYPE_MAP || map_value[index]<=10)) //! only add in not occupied grid
             {
-                grid_data.map_value[index] = cur_value;
+                map_value[index] = cur_value;
                 add_voxel_points_[index] = pt;
-                grid_data.grid_num[index] = TYPE_POINTCLOUD;
+                grid_num[index] = TYPE_POINTCLOUD;
             }
         }
     }
@@ -225,19 +241,19 @@ void LidarSelector::addSparseMap(const cv::Mat& img, pcl::PointCloud<pcl::PointX
     int add = 0;
     for (int i = 0; i < length; i++) 
     {
-        if (grid_data.grid_num[i] == TYPE_POINTCLOUD) // && (map_value[i]>=10)) //! debug
+        if (grid_num[i] == TYPE_POINTCLOUD) // && (map_value[i]>=10)) //! debug
         {
             Eigen::Vector3d pt = add_voxel_points_[i];
             Eigen::Vector2d pc = new_frame_->w2c(pt, cam_id);
 
             PointPtr pt_new(new Point(pt));
             Eigen::Vector3d f = cameras[cam_id].cam->cam2world(pc);
-            FeaturePtr ftr_new(new Feature(pc, f, new_frame_->T_f_w_, grid_data.map_value[i], 0, cam_id));
+            FeaturePtr ftr_new(new Feature(pc, f, new_frame_->T_f_w_, map_value[i], 0, cam_id));
             ftr_new->img = new_frame_->img_pyr_[cam_id][0];
             ftr_new->id_ = new_frame_->id_;
 
             pt_new->addFrameRef(ftr_new);
-            pt_new->value = grid_data.map_value[i];
+            pt_new->value = map_value[i];
             AddPoint(pt_new);
             add += 1;
         }
@@ -377,14 +393,13 @@ void LidarSelector::createPatchFromPatchWithBorder(float* patch_with_border, flo
 }
 #endif
 
-// 添加稀疏地图中的点
-void LidarSelector::addFromSparseMap(const std::vector<cv::Mat>& imgs, pcl::PointCloud<pcl::PointXYZI>::Ptr pg)
+void LidarSelector::addFromSparseMap(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg)
 {
     if(feat_map.empty()) return;
 
     // 确保传入的图像数量与相机数量匹配
     if(imgs.size() != cameras.size()) {
-        std::cerr << "Number of images does not match number of cameras." << std::endl;
+        std::cerr << "[ERROR] Number of images does not match number of cameras." << std::endl;
         return;
     }
 
@@ -394,19 +409,17 @@ void LidarSelector::addFromSparseMap(const std::vector<cv::Mat>& imgs, pcl::Poin
     downSizeFilter.filter(*pg_down);
     
     // 重置网格数据
-    for(auto& grid_data : grid_data_list) {
-        std::fill_n(grid_data.grid_num, grid_n_width * grid_n_height, TYPE_UNKNOWN);
-        std::fill_n(grid_data.map_index, grid_n_width * grid_n_height, 0);
-        std::fill_n(grid_data.map_value, grid_n_width * grid_n_height, 0.0f);
-        std::fill_n(grid_data.map_dist, grid_n_width * grid_n_height, 10000.0f);
-    }
+    std::fill_n(grid_num, grid_n_width * grid_n_height, TYPE_UNKNOWN);
+    std::fill_n(map_index, grid_n_width * grid_n_height, 0);
+    std::fill_n(map_value, grid_n_width * grid_n_height, 0.0f);
+    std::fill_n(map_dist, grid_n_width * grid_n_height, 10000.0f);
 
     sub_sparse_map->reset();
     sub_map_cur_frame_.clear();
 
     float voxel_size = 0.5f;
 
-    // 清空子特征图和Warp映射
+    // 清空子特征图和 Warp 映射
     sub_feat_map.clear();
     for(auto& kv : Warp_map) {
         delete kv.second;
@@ -418,13 +431,13 @@ void LidarSelector::addFromSparseMap(const std::vector<cv::Mat>& imgs, pcl::Poin
     std::vector<float*> depth_ptrs(cameras.size());
 
     for(size_t cam_idx = 0; cam_idx < cameras.size(); ++cam_idx) {
-        const CameraInfo& cam_info = cameras[cam_idx];
+        CameraInfo& cam_info = cameras[cam_idx];
         depth_imgs[cam_idx] = cv::Mat::zeros(cam_info.height, cam_info.width, CV_32FC1);
         depth_ptrs[cam_idx] = reinterpret_cast<float*>(depth_imgs[cam_idx].data);
     }
 
     // 遍历下采样后的点云
-    for(int i = 0; i < pg_down->size(); i++)
+    for(int i = 0; i < static_cast<int>(pg_down->size()); i++)
     {
         // 转换点到世界坐标系
         Eigen::Vector3d pt_w(pg_down->points[i].x, pg_down->points[i].y, pg_down->points[i].z);
@@ -433,48 +446,90 @@ void LidarSelector::addFromSparseMap(const std::vector<cv::Mat>& imgs, pcl::Poin
         int loc_xyz[3];
         for(int j = 0; j < 3; j++)
         {
-            loc_xyz[j] = floor(pt_w[j] / voxel_size);
+            loc_xyz[j] = static_cast<int>(std::floor(pt_w[j] / voxel_size));
         }
         VOXEL_KEY position(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
 
         // 更新子特征图
         sub_feat_map[position] = 1.0f;
 
-        // 遍历每个相机
+        // 遍历每个相机，更新深度图
         for(size_t cam_idx = 0; cam_idx < cameras.size(); ++cam_idx)
         {
-            const CameraInfo& cam_info = cameras[cam_idx];
-            Eigen::Vector3d pt_cam = new_frame_->w2f(pt_w, cam_idx); // 转换到相机坐标系
+            CameraInfo& cam_info = cameras[cam_idx];
+            Eigen::Vector3d pt_cam = new_frame_->w2f(pt_w); 
 
-            if(pt_cam[2] > 0)
+            if(pt_cam[2] > 0.0)
             {
-                Eigen::Vector2d px = cameras[cam_idx].cam->world2cam(pt_cam);
-                float u = cameras[cam_idx].fx * pt_cam[0] / pt_cam[2] + cameras[cam_idx].cx;
-                float v = cameras[cam_idx].fy * pt_cam[1] / pt_cam[2] + cameras[cam_idx].cy;
+                // 像素坐标
+                float u = cam_info.fx * static_cast<float>(pt_cam[0] / pt_cam[2]) + cam_info.cx;
+                float v = cam_info.fy * static_cast<float>(pt_cam[1] / pt_cam[2]) + cam_info.cy;
 
                 int col = static_cast<int>(u);
                 int row = static_cast<int>(v);
+
+                // 若在图像内，则更新 depth
                 if(col >= 0 && col < cam_info.width && row >= 0 && row < cam_info.height)
                 {
-                    depth_ptrs[cam_idx][cam_info.width * row + col] = pt_cam[2];
+                    float& current_depth = depth_ptrs[cam_idx][cam_info.width * row + col];
+                    float depth_cam = static_cast<float>(pt_cam[2]);
+                    if(current_depth == 0.0f || depth_cam < current_depth)
+                    {
+                        current_depth = depth_cam;
+                    }
                 }
             }
         }
     }
 
-    // 处理每个相机的特征匹配
+    // 多相机并行处理
     #pragma omp parallel for
-    for(int cam_idx = 0; cam_idx < cameras.size(); cam_idx++)
+    for(int cam_idx = 0; cam_idx < static_cast<int>(cameras.size()); cam_idx++)
     {
-        const CameraInfo& cam_info = cameras[cam_idx];
-        cv::Mat img_mono = imgs[cam_idx].channels() > 1 ? (imgs[cam_idx].clone(), cv::cvtColor(imgs[cam_idx], img_mono, cv::COLOR_BGR2GRAY)) : imgs[cam_idx].clone();
-        pcl::PointCloud<pcl::PointXYZI>::Ptr pg_cam(new pcl::PointCloud<pcl::PointXYZI>());
-        // 这里假设 pg 是全局点云，需要根据相机视角提取对应点云
-        // 可以根据需要调整
+        CameraInfo& cam_info = cameras[cam_idx];
 
+        // 转灰度
+        cv::Mat img_mono;
+        if(imgs[cam_idx].channels() > 1)
+            cv::cvtColor(imgs[cam_idx], img_mono, cv::COLOR_BGR2GRAY);
+        else
+            img_mono = imgs[cam_idx].clone();
+
+        // 根据深度图生成单相机对应的稀疏点云 pg_cam
+        PointCloudXYZI::Ptr pg_cam(new PointCloudXYZI());
+        pg_cam->reserve(static_cast<size_t>(cam_info.width * cam_info.height));
+
+        float* depth_ptr = depth_ptrs[cam_idx];
+
+        for(int row = 0; row < cam_info.height; row++)
+        {
+            for(int col = 0; col < cam_info.width; col++)
+            {
+                float depth = depth_ptr[row * cam_info.width + col];
+                if(depth > 0.0f && depth < 10000.0f) // 确保深度有效
+                {
+                    // 反投影得到3D点
+                    float x = (static_cast<float>(col) - cam_info.cx) * depth / cam_info.fx;
+                    float y = (static_cast<float>(row) - cam_info.cy) * depth / cam_info.fy;
+                    float z = depth;
+
+                    // 无法使用大括号初始化(四个float)，需要先临时对象赋值
+                    pcl::PointXYZINormal p;
+                    p.x = x;
+                    p.y = y;
+                    p.z = z;
+                    p.intensity = 1.0f;
+
+                    pg_cam->points.push_back(p);
+                }
+            }
+        }
+
+        // 添加稀疏点云
         addSparseMap(img_mono, pg_cam, cam_idx);
     }
 }
+
 
 #ifdef FeatureAlign
 bool LidarSelector::align2D(
@@ -630,114 +685,179 @@ void LidarSelector::FeatureAlignment(cv::Mat img)
 }
 #endif
 
+
 float LidarSelector::UpdateState(const std::vector<cv::Mat>& imgs, float total_residual, int level) 
 {
     int total_points = sub_sparse_map->index.size();
     if (total_points == 0) return 0.0f;
 
+    // 保存旧状态，以便在优化失败时恢复
     StatesGroup old_state = (*state);
     bool EKF_end = false;
-    float error = 0.0f, last_error = total_residual;
 
-    // 每个相机贡献自己的误差
+    // 初始化误差和测量计数
+    float error = 0.0f;
+    float last_error = total_residual;
+    n_meas_ = 0;
+
+    // 准备测量向量 z 和雅可比矩阵 H_sub
+    // 假设每个点在每个相机中都有一个测量，H_DIM 为总测量数
+    // H_sub 的列数为状态维度，这里假设状态维度为 DIM_STATE
+    // H_sub 的行数为 H_DIM
     const int H_DIM_PER_CAM = total_points * patch_size_total;
     const int H_DIM = H_DIM_PER_CAM * cameras.size();
     Eigen::VectorXd z(H_DIM);
     z.setZero();
 
-    H_sub.resize(H_DIM, 6 * cameras.size());
+    // 重置 H_sub 矩阵
+    H_sub.resize(H_DIM, DIM_STATE);
     H_sub.setZero();
 
-    for(int iteration = 0; iteration < NUM_MAX_ITERATIONS; iteration++) 
+    // 获取当前状态的旋转和平移
+    M3D Rwi(state->rot_end); // 世界到IMU的旋转矩阵
+    V3D Pwi(state->pos_end); // 世界到IMU的平移向量
+
+    // 计算相机到世界的变换
+    // 对每个相机分别计算 Rcw 和 Pcw
+    for(size_t cam_idx = 0; cam_idx < cameras.size(); cam_idx++)
+    {
+        CameraInfo& cam_info = cameras[cam_idx];
+        cam_info.Rcw = cam_info.Rci * Rwi.transpose();
+        cam_info.Pcw = -cam_info.Rci * Rwi.transpose() * Pwi + cam_info.Pci;
+    }
+
+    // 开始迭代优化
+    for (int iteration = 0; iteration < NUM_MAX_ITERATIONS; iteration++) 
     {
         error = 0.0f;
         n_meas_ = 0;
 
         // 遍历每个相机
-        for(int cam_idx = 0; cam_idx < cameras.size(); cam_idx++)
+        for(size_t cam_idx = 0; cam_idx < cameras.size(); cam_idx++)
         {
-            const CameraInfo& cam_info = cameras[cam_idx];
+            CameraInfo& cam_info = cameras[cam_idx];
             const cv::Mat& img_gray = imgs[cam_idx];
-            
+
+            // 遍历每个点
             for(int i = 0; i < total_points; i++)
             {
                 PointPtr pt = sub_sparse_map->voxel_points[i];
                 if(pt == nullptr) continue;
 
-                Eigen::Vector2d pc = new_frame_->w2c(pt->pos_, cam_idx);
+                // 变换点到相机坐标系
                 Eigen::Vector3d pf = cam_info.Rcw * pt->pos_ + cam_info.Pcw;
+
+                // 点在相机前方
+                if(pf[2] <= 0) continue;
+
+                // 投影到图像平面
+                Eigen::Vector2d pc = cameras[cam_idx].cam->world2cam(pf);
+                if(!cameras[cam_idx].cam->isInFrame(pc.cast<int>(), (patch_size_half + 1) * 8))
+                    continue;
 
                 // 计算雅可比矩阵
                 Eigen::Matrix<double, 2, 3> Jdpi;
-                dpi(pf, Jdpi);
+                dpi(pf, Jdpi, cam_info.fx, cam_info.fy); // 计算投影的雅可比
 
-                // 获取补丁
+                // 计算 SKEW_SYM_MATRX(pf)
+                Eigen::Matrix<double, 3, 3> p_hat;
+                p_hat << 
+                    0, -pf[2], pf[1],
+                    pf[2], 0, -pf[0],
+                    -pf[1], pf[0], 0;
+
+                // 提取补丁
                 float patch_ref[patch_size_total];
                 getpatch(img_gray, pc, patch_ref, level, cam_idx);
 
+                int search_level = sub_sparse_map->search_levels[i];
+                int pyramid_level = level + search_level;
+                const int scale =  (1<<pyramid_level);
+                const int u_ref_i = floorf(pc[0]/scale)*scale; 
+                const int v_ref_i = floorf(pc[1]/scale)*scale;
                 // 计算残差和雅可比
                 for(int x = 0; x < patch_size; x++) 
                 {
                     for(int y = 0; y < patch_size; y++) 
                     {
-                        int idx = i * patch_size_total + x * patch_size + y;
-                        float res = img_gray.at<float>(x, y) - patch_ref[x * patch_size + y];
-                        z(cam_idx * H_DIM_PER_CAM + idx) = res;
+                        int idx = cam_idx * H_DIM_PER_CAM + i * patch_size_total + x * patch_size + y;
+
+                        // 获取图像像素值
+                        float img_val = static_cast<float>(img_gray.at<uchar>(v_ref_i + x * scale - patch_size_half * scale, 
+                                                                             u_ref_i + y * scale - patch_size_half * scale));
+
+                        // 计算残差
+                        float res = img_val - patch_ref[x * patch_size + y];
+                        z(idx) = res;
                         error += res * res;
                         n_meas_++;
 
-                        // 计算雅可比
-                        Eigen::Matrix<double, 2, 1> Jimg;
                         // 计算图像梯度 du, dv
-                        float du = 0.5f * ((img_gray.at<float>(x, y+1) - img_gray.at<float>(x, y-1)));
-                        float dv = 0.5f * ((img_gray.at<float>(x+1, y) - img_gray.at<float>(x-1, y)));
-                        Jimg << du, dv;
+                        float du = 0.5f * ((img_gray.at<uchar>(v_ref_i + x * scale - patch_size_half * scale, u_ref_i + y * scale + scale - patch_size_half * scale) 
+                                           - img_gray.at<uchar>(v_ref_i + x * scale - patch_size_half * scale, u_ref_i + y * scale - scale - patch_size_half * scale)));
+                        float dv = 0.5f * ((img_gray.at<uchar>(v_ref_i + x * scale + scale - patch_size_half * scale, u_ref_i + y * scale - patch_size_half * scale) 
+                                           - img_gray.at<uchar>(v_ref_i + x * scale - scale - patch_size_half * scale, u_ref_i + y * scale - patch_size_half * scale)));
 
+                        Eigen::Vector2d Jimg(du, dv);
+                        Jimg = Jimg * (1.0 / scale);
+
+                        // 计算雅可比
                         Eigen::Vector3d Jdphi = Jimg.transpose() * Jdpi;
                         Eigen::Vector3d Jdp = -Jimg.transpose() * Jdpi;
 
-                        // 对于每个相机，Jacobian 块位于 H_sub 的特定位置
-                        Eigen::Matrix<double, 1, 6> JH;
-                        JH.block<1, 3>(0,0) = Jdphi.transpose();
-                        JH.block<1, 3>(0,3) = Jdp.transpose();
-                        H_sub.block(cam_idx * H_DIM_PER_CAM + idx, cam_idx * 6, 1, 6) = JH;
+                        // 计算旋转和平移的雅可比
+                        Eigen::Matrix<double, 1, DIM_STATE> JH;
+                        JH.setZero();
+                        // 假设前3维为旋转，后3维为平移
+                        JH.segment<3>(0) = Jdphi.transpose();
+                        JH.segment<3>(3) = Jdp.transpose();
+
+                        // 填充 H_sub 矩阵
+                        H_sub.row(idx) = JH;
                     }
                 }
             }
         }
 
-        error /= n_meas_;
+        // 计算平均误差
+        error /= static_cast<float>(n_meas_);
 
+        // 检查误差是否有所降低
         if(error <= last_error)
         {
             old_state = (*state);
             last_error = error;
 
+            // 计算 H^T * H 和 H^T * z
             Eigen::MatrixXd Ht = H_sub.transpose();
             H_T_H = Ht * H_sub;
 
-            Eigen::Matrix<double, DIM_STATE, DIM_STATE> K_1 = (H_T_H + (state->cov / img_point_cov).inverse()).inverse();
+            // 计算卡尔曼增益 K
+            Eigen::MatrixXd K_1 = (H_T_H + (state->cov / img_point_cov).inverse()).inverse();
+
+            // 计算 H^T * z
             Eigen::VectorXd HTz = Ht * z;
-            Eigen::Matrix<double, DIM_STATE, 6> G_local = K_1.topLeftCorner<DIM_STATE, 6>() * H_T_H.topLeftCorner<6,6>();
 
-            Eigen::VectorXd vec = (*state_propagat) - (*state);
-            Eigen::VectorXd solution = -K_1.topLeftCorner<DIM_STATE,6>() * HTz + vec - G_local * vec.head<6>();
+            // 计算状态更新
+            Eigen::VectorXd solution = -K_1 * HTz;
 
+            // 更新状态
             (*state) += solution;
-            Eigen::Vector3d rot_add = solution.head<3>();
-            Eigen::Vector3d t_add = solution.tail<3>();
 
-            if((rot_add.norm() * 57.3f < 0.001f) && (t_add.norm() * 100.0f < 0.001f))
+            // 检查收敛条件
+            if(solution.norm() < 1e-3) // 具体阈值可根据需求调整
             {
                 EKF_end = true;
             }
         }
         else
         {
+            // 优化未收敛，恢复旧状态
             (*state) = old_state;
             EKF_end = true;
         }
 
+        // 检查是否结束优化
         if(iteration == NUM_MAX_ITERATIONS || EKF_end) 
         {
             break;
@@ -747,16 +867,15 @@ float LidarSelector::UpdateState(const std::vector<cv::Mat>& imgs, float total_r
     return last_error;
 }
 
-
-void LidarSelector::updateFrameState(StatesGroup state)
+//T_f_w_ 应仅基于帧的全局位姿状态 (由IMU提供），不应包含任何相机的外参。
+void LidarSelector::updateFrameState(const StatesGroup& state)
 {
-    M3D Rwi(state.rot_end);
-    V3D Pwi(state.pos_end);
-    Rcw = Rci * Rwi.transpose();
-    Pcw = -Rci*Rwi.transpose()*Pwi + Pci;
-    new_frame_->T_f_w_ = SE3(Rcw, Pcw);
-}
+    M3D Rwi(state.rot_end); // 从状态中获取旋转矩阵
+    V3D Pwi(state.pos_end); // 从状态中获取平移向量
 
+    // 更新帧的位姿，仅基于IMU状态，不依赖于相机外参
+    new_frame_->T_f_w_ = SE3(Rwi, Pwi);
+}
 
 void LidarSelector::addObservation(const std::vector<cv::Mat>& imgs)
 {
@@ -795,7 +914,7 @@ void LidarSelector::addObservation(const std::vector<cv::Mat>& imgs)
             if(pt->obs_.size() >= 20)
             {
                 FeaturePtr ref_ftr;
-                pt->getFurthestViewObs(new_frame_->pos_, ref_ftr);
+                pt->getFurthestViewObs(new_frame_->pos(), ref_ftr);
                 pt->deleteFeatureRef(ref_ftr);
             }
 
@@ -843,7 +962,7 @@ void LidarSelector::display_keypatch(double time)
     for(int i=0; i<total_points; i++)
     {
         PointPtr pt = sub_sparse_map->voxel_points[i];
-        V2D pc(new_frame_->w2c(pt->pos_));
+        V2D pc(new_frame_->w2c(pt->pos_,0));//默认为主相机
         cv::Point2f pf;
         pf = cv::Point2f(pc[0], pc[1]); 
         if (sub_sparse_map->errors[i]<8000) // 5.5
@@ -861,7 +980,7 @@ void LidarSelector::display_keypatch(double time)
 // 获取像素值
 Eigen::Vector3f LidarSelector::getpixel(const cv::Mat& img, const Eigen::Vector2d& pc, int cam_id) 
 {
-    const CameraInfo& cam_info = cameras[cam_id];
+    CameraInfo& cam_info = cameras[cam_id];
     const float u_ref = pc[0];
     const float v_ref = pc[1];
     const int u_ref_i = floorf(u_ref); 
@@ -891,7 +1010,7 @@ Eigen::Vector3f LidarSelector::getpixel(const cv::Mat& img, const Eigen::Vector2
 }
 
 
-void LidarSelector::detect(const std::vector<cv::Mat>& imgs, pcl::PointCloud<pcl::PointXYZI>::Ptr pg) 
+void LidarSelector::detect(const std::vector<cv::Mat>& imgs, PointCloudXYZI::Ptr pg) 
 {
     // 确保传入的图像数量与相机数量匹配
     if(imgs.size() != cameras.size())
@@ -901,7 +1020,14 @@ void LidarSelector::detect(const std::vector<cv::Mat>& imgs, pcl::PointCloud<pcl
     }
 
     // 初始化新的帧
-    new_frame_.reset(new Frame(cameras, imgs));
+    std::vector<vk::AbstractCamera*> cam_ptrs;
+    cam_ptrs.reserve(cameras.size());
+    for(size_t i = 0; i < cameras.size(); i++){
+        cam_ptrs.push_back(cameras[i].cam);
+    }
+
+    // 再调用Frame
+    new_frame_.reset(new Frame(cam_ptrs, imgs));
     updateFrameState(*state);
 
     if(stage_ == STAGE_FIRST_FRAME && pg->size() > 10)
@@ -912,23 +1038,7 @@ void LidarSelector::detect(const std::vector<cv::Mat>& imgs, pcl::PointCloud<pcl
 
     double t1 = omp_get_wtime();
 
-    // 对每个相机并行执行 addFromSparseMap 和 addSparseMap
-    #pragma omp parallel for
-    for(int cam_idx = 0; cam_idx < cameras.size(); cam_idx++)
-    {
-        const CameraInfo& cam_info = cameras[cam_idx];
-        cv::Mat img_mono;
-        if(imgs[cam_idx].channels() > 1)
-            cv::cvtColor(imgs[cam_idx], img_mono, cv::COLOR_BGR2GRAY);
-        else
-            img_mono = imgs[cam_idx].clone();
-
-        // 添加稀疏地图
-        addFromSparseMap(imgs, pg);
-        // 添加稀疏点云
-        addSparseMap(img_mono, pg, cam_idx);
-    }
-
+    addFromSparseMap(imgs, pg);
     double t4 = omp_get_wtime();
     
     // 准备所有相机的灰度图

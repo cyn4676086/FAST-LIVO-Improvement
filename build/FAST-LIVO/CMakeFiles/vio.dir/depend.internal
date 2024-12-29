@@ -555,6 +555,7 @@ FAST-LIVO/CMakeFiles/vio.dir/src/frame.cpp.o
 FAST-LIVO/CMakeFiles/vio.dir/src/lidar_selection.cpp.o
  /home/elon/ws_FAST-LIVO/devel/include/fast_livo/Pose6D.h
  /home/elon/ws_FAST-LIVO/devel/include/fast_livo/States.h
+ /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/common_lib.h
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/feature.h
  /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/frame.h

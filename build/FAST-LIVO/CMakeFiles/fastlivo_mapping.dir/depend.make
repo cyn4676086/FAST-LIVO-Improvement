@@ -611,6 +611,7 @@ FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/IKFoM_toolkit/mtk/types/SOn.hpp
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/IKFoM_toolkit/mtk/types/vect.hpp
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/IMU_Processing.h
+FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/camera_manager.h
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/common_lib.h
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/feature.h
 FAST-LIVO/CMakeFiles/fastlivo_mapping.dir/src/laserMapping.cpp.o: /home/elon/ws_FAST-LIVO/src/FAST-LIVO/include/frame.h

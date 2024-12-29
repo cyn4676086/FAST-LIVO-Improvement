@@ -148,7 +148,7 @@ struct MeasureGroup
 {
     double img_offset_time;
     deque<sensor_msgs::Imu::ConstPtr> imu;
-    cv::Mat img;
+    std::vector<cv::Mat> imgs;                    // 多相机图像
     MeasureGroup()
     {
         img_offset_time = 0.0;
